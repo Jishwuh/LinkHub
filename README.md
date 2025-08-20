@@ -55,7 +55,7 @@ This project is designed to be **plug-and-play** — clone it, configure `.env`,
 
 ### 1) Clone and install
 ```bash
-git clone https://github.com/yourname/linkhub.git
+git clone https://github.com/jishwuh/linkhub.git
 cd linkhub
 npm install
 ````
