@@ -376,4 +376,5 @@ and have LinkHub live on your localhost.
 
 MIT — free to use, modify, and deploy.
 
+Created by Jishwuh - Polished and Modified for efficiency by ChatGPT ♥
 ---
