@@ -24,8 +24,8 @@ This project is designed to be **plug-and-play** — clone it, configure `.env`,
   - Animated heart icon
 - **Visit counter**
   - Tracks total visits on your page
-- **404 page (Rickroll 😉)**
-  - Any unknown route plays “Never Gonna Give You Up” with a “Back to Main Page” button
+- **404 page**
+  - Any unknown route plays the "Background Youtube ID" in the admin panel with a redirect to the main page.
 - **Admin dashboard**
   - Secure login (bcrypt password)
   - Manage links, embeds, redirects, OpenGraph/Twitter settings
