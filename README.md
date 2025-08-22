@@ -207,6 +207,171 @@ Add your custom domain in Render dashboard.
 
 ---
 
+# ⚡ Common Issues for Hosting on Local System
+
+Running LinkHub locally sometimes requires extra setup on your machine. This section lists the most common issues (and their fixes) when getting MySQL, Node.js, and environment variables working.
+
+---
+
+## 1. Node.js not starting / wrong version
+
+* Make sure you have **Node.js v18+** installed.
+* Check version:
+
+  ```bash
+  node -v
+  ```
+* If `node` isn’t recognized:
+
+  * Download from [Node.js official site](https://nodejs.org/).
+  * Re-open your terminal after install so PATH updates.
+
+---
+
+## 2. `mysql` command not found
+
+If `mysql` isn’t recognized, either:
+
+* MySQL isn’t installed, or
+* the `bin` folder isn’t in your PATH.
+
+### Fix
+
+1. Install [MySQL Community Server](https://dev.mysql.com/downloads/mysql/).
+2. Add MySQL’s `bin` folder to PATH:
+
+   ```
+   C:\Program Files\MySQL\MySQL Server 8.0\bin
+   ```
+
+   Go to **System Properties → Environment Variables → Path → New**, paste that path, click OK.
+3. Restart your terminal and test:
+
+   ```bash
+   mysql --version
+   ```
+
+---
+
+## 3. MySQL service not running
+
+If MySQL is installed but you still can’t connect:
+
+```bash
+sc query MySQL*
+net start MySQL80
+```
+
+* `MySQL80` is the default service name, but yours might differ.
+
+---
+
+## 4. Database or user errors
+
+Error like:
+
+```
+Access denied for user 'linkhub'@'localhost'
+```
+
+means the database or user doesn’t exist yet.
+
+### Fix
+
+Log in as root:
+
+```bash
+mysql -u root -p
+```
+
+Inside the MySQL shell:
+
+```sql
+CREATE DATABASE IF NOT EXISTS linkhub
+  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE USER IF NOT EXISTS 'linkhub'@'localhost' IDENTIFIED BY 'Strong_App_Password!';
+GRANT ALL PRIVILEGES ON linkhub.* TO 'linkhub'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Then test:
+
+```bash
+mysql -h 127.0.0.1 -P 3306 -u linkhub -p linkhub -e "SELECT 1;"
+```
+
+If it prints `1`, credentials are correct.
+
+---
+
+## 5. Wrong `.env` values
+
+Your `.env` must point to the DB you created:
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=linkhub
+DB_PASSWORD=Strong_App_Password!
+DB_NAME=linkhub
+DB_SSL=
+```
+
+⚠️ Use `127.0.0.1` (not `localhost`) to avoid socket errors on Windows.
+
+To confirm your app is reading the `.env`:
+
+```bash
+node -e "require('dotenv').config();console.log(process.env.DB_USER, process.env.DB_NAME)"
+```
+
+---
+
+## 6. ECONNREFUSED / Connection refused
+
+* MySQL isn’t running → start the service (`net start MySQL80`).
+* Wrong port → make sure you’re connecting on `3306` (default).
+* Firewall blocking port → allow MySQL through firewall.
+* For hosted DBs (like PlanetScale), you must enable SSL:
+
+  ```env
+  DB_SSL=true
+  ```
+
+---
+
+## 7. Debugging tip: Quick health check route
+
+Add this inside `server.cjs`:
+
+```js
+app.get('/debug/db', async (_req, res, next) => {
+  try {
+    const [rows] = await pool.query('SELECT 1 AS ok');
+    res.json({ ok: rows[0].ok });
+  } catch (err) { next(err); }
+});
+```
+
+Then open [http://localhost:3000/debug/db](http://localhost:3000/debug/db).
+
+* If you see `{ "ok": 1 }` → DB works.
+* If you see an error → the error explains what’s wrong.
+
+---
+
+✅ With these fixes, you should be able to run:
+
+```bash
+npm install
+npm start
+```
+
+and have LinkHub live on your localhost.
+
+---
+
 ## 📜 License
 
 MIT — free to use, modify, and deploy.
