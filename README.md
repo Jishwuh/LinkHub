@@ -194,6 +194,19 @@ Add your custom domain in Render dashboard.
 
 ---
 
+## Example View
+
+* Main Page
+<img width="895" height="463" alt="image" src="https://github.com/user-attachments/assets/ea4a0a9f-3471-4b93-8d5d-b7200f419570" />
+
+* Admin Panel 1
+<img width="388" height="909" alt="image" src="https://github.com/user-attachments/assets/1d9ad0e2-0434-44bf-8321-053065057228" />
+
+* Admin Panel 2
+<img width="646" height="947" alt="image" src="https://github.com/user-attachments/assets/68bc6480-2d92-4b69-bf7a-1ea7c3d50ee7" />
+
+---
+
 ## 📜 License
 
 MIT — free to use, modify, and deploy.
