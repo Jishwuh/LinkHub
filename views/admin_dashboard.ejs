@@ -1,0 +1,229 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Admin</title>
+  <link rel="stylesheet" href="/static/css/site.css">
+</head>
+
+<body class="admin">
+  <div class="container">
+    <form class="form" id="settings-form" method="POST" action="/admin/settings" enctype="multipart/form-data">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <h1>Site Settings</h1>
+      <div class="grid">
+        <label>Site title<input name="site_title" value="<%= settings.site_title||'' %>"></label>
+        <label>Handle<input name="handle" value="<%= settings.handle||'' %>"></label>
+        <label>Display name<input name="display_name" value="<%= settings.display_name||'' %>"></label>
+        <label>Theme color<input name="theme_color" type="color" value="<%= settings.theme_color||'#ff4d6d' %>"></label>
+      </div>
+      <label>Bio<textarea name="bio" rows="3"><%= settings.bio||'' %></textarea></label>
+
+      <div class="grid">
+        <label>Avatar file<input type="file" name="avatar" accept="image/*"></label>
+        <label>Background YouTube ID<input name="bg_youtube_id" value="<%= settings.bg_youtube_id||'' %>"></label>
+      </div>
+
+      <h2>Discord/Twitter Embed Editor</h2>
+      <div class="grid">
+        <label>Page title<input name="page_title" value="<%= settings.page_title||'' %>"
+            placeholder="Embed title"></label>
+        <label>Canonical URL<input name="site_url" type="url" value="<%= settings.site_url||'' %>"
+            placeholder="https://yourdomain.com"></label>
+      </div>
+      <label>Embed description<textarea name="og_description"
+          rows="2"><%= settings.og_description||'' %></textarea></label>
+      <div class="grid">
+        <label>OG image URL<input name="og_image" type="url" value="<%= settings.og_image||'' %>"
+            placeholder="https://.../image.jpg"></label>
+        <label>Upload OG image<input type="file" name="og_image_file" accept="image/*"></label>
+      </div>
+      <label>Footer HTML<textarea name="footer_html" rows="2"><%= settings.footer_html||'' %></textarea></label>
+      <button type="submit">Save settings</button>
+    </form>
+
+    <section class="card" style="margin-top:16px;">
+      <h2>Links</h2>
+      <form id="link-form" class="form" method="POST" action="/admin/link">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="id" id="link-id">
+        <div class="grid">
+          <label>Title<input name="title" id="link-title"></label>
+          <label>URL<input name="url" id="link-url" type="url"></label>
+          <label>Icon key<select name="icon_key" id="link-icon">
+              <option value="">(none)</option>
+              <% icons.forEach(i=>{ %><option value="<%= i %>">
+                  <%= i %>
+                </option>
+                <% }) %>
+            </select></label>
+          <label>Button color<input name="color_hex" id="link-color" type="color" value="#2a2a2a"></label>
+          <label>Order<input name="order_index" id="link-order" type="number" value="0"></label>
+          <label class="checkbox"><input type="checkbox" name="is_visible" id="link-visible" checked> Visible</label>
+        </div>
+        <div class="actions">
+          <button id="link-submit" type="submit">Add Link</button>
+          <button id="link-cancel" type="button" class="btn-secondary" style="display:none;">Cancel</button>
+        </div>
+      </form>
+
+      <div class="table">
+        <div class="row head">
+          <div>ID</div>
+          <div>Title</div>
+          <div>URL</div>
+          <div>Icon</div>
+          <div>Color</div>
+          <div>Order</div>
+          <div>Visible</div>
+          <div>Actions</div>
+        </div>
+        <% links.forEach(l=>{ %>
+          <div class="row">
+            <div>
+              <%= l.id %>
+            </div>
+            <div>
+              <%= l.title %>
+            </div>
+            <div><a href="<%= l.url %>" target="_blank">
+                <%= l.url %>
+              </a></div>
+            <div>
+              <%= l.icon_key || '' %>
+            </div>
+            <div>
+              <%= l.color_hex || '' %>
+            </div>
+            <div>
+              <%= l.order_index %>
+            </div>
+            <div>
+              <%= l.is_visible ? 'Yes' :'No' %>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-secondary btn-edit" data-id="<%= l.id %>" data-title="<%- l.title %>"
+                data-url="<%- l.url %>" data-icon="<%- l.icon_key || '' %>" data-color="<%- l.color_hex || '' %>"
+                data-order="<%= l.order_index %>" data-visible="<%= l.is_visible ? '1':'0' %>">Edit</button>
+              <form method="POST" action="/admin/link/delete" onsubmit="return confirm('Delete link #<%= l.id %>?')">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="id" value="<%= l.id %>">
+                <button class="btn-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+          <% }) %>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px;">
+      <h2>Custom Embeds</h2>
+      <form class="form" method="POST" action="/admin/embed">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" id="embed-id" name="id">
+        <label>Title<input name="title" id="embed-title"></label>
+        <label>Embed HTML<textarea name="embed_html" id="embed-html" rows="4"></textarea></label>
+        <div class="grid">
+          <label>Order<input name="order_index" id="embed-order" type="number" value="0"></label>
+          <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-visible" checked> Visible</label>
+        </div>
+        <div class="actions">
+          <button type="submit">Save Embed</button>
+        </div>
+      </form>
+      <div class="table">
+        <div class="row head">
+          <div>ID</div>
+          <div>Title</div>
+          <div>Order</div>
+          <div>Visible</div>
+          <div>Actions</div>
+        </div>
+        <% embeds.forEach(e=>{ %>
+          <div class="row">
+            <div>
+              <%= e.id %>
+            </div>
+            <div>
+              <%= e.title %>
+            </div>
+            <div>
+              <%= e.order_index %>
+            </div>
+            <div>
+              <%= e.is_visible ? 'Yes' :'No' %>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-secondary btn-embed-edit" data-id="<%= e.id %>"
+                data-title="<%- e.title %>" data-order="<%= e.order_index %>"
+                data-visible="<%= e.is_visible ? '1':'0' %>"
+                data-html="<%- JSON.stringify(e.embed_html).slice(1,-1) %>">Edit</button>
+              <form method="POST" action="/admin/embed/delete" onsubmit="return confirm('Delete embed #<%= e.id %>?')">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="id" value="<%= e.id %>">
+                <button class="btn-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+          <% }) %>
+      </div>
+    </section>
+
+    <section class="card" style="margin-top:16px;">
+      <h2>Redirects</h2>
+      <form class="form" method="POST" action="/admin/redirect" id="redirect-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <input type="hidden" name="id" id="redirect-id">
+        <div class="grid">
+          <label>Slug (no slash)<input name="slug" id="redirect-slug" placeholder="twitch"></label>
+          <label>Target URL<input name="target_url" id="redirect-url" type="url" placeholder="https://..."></label>
+          <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-active" checked> Active</label>
+        </div>
+        <div class="actions">
+          <button id="redirect-submit" type="submit">Add Redirect</button>
+          <button id="redirect-cancel" type="button" class="btn-secondary" style="display:none;">Cancel</button>
+        </div>
+      </form>
+      <div class="table">
+        <div class="row head">
+          <div>ID</div>
+          <div>Slug</div>
+          <div>Target</div>
+          <div>Active</div>
+          <div>Actions</div>
+        </div>
+        <% redirects.forEach(r=>{ %>
+          <div class="row">
+            <div>
+              <%= r.id %>
+            </div>
+            <div>/<%= r.slug %>
+            </div>
+            <div><a href="<%= r.target_url %>" target="_blank">
+                <%= r.target_url %>
+              </a></div>
+            <div>
+              <%= r.is_active ? 'Yes' :'No' %>
+            </div>
+            <div class="actions">
+              <button type="button" class="btn-secondary btn-redirect-edit" data-id="<%= r.id %>"
+                data-slug="<%= r.slug %>" data-url="<%= r.target_url %>"
+                data-active="<%= r.is_active ? '1':'0' %>">Edit</button>
+              <form method="POST" action="/admin/redirect/delete"
+                onsubmit="return confirm('Delete redirect #<%= r.id %>?')">
+                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                <input type="hidden" name="id" value="<%= r.id %>">
+                <button class="btn-danger">Delete</button>
+              </form>
+            </div>
+          </div>
+          <% }) %>
+      </div>
+    </section>
+  </div>
+  <script src="/static/js/admin.js"></script>
+</body>
+
+</html>

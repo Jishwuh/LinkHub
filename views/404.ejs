@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>404 • Silly goose</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/css/site.css" />
+  <style>
+    .notfound-wrap {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 2rem
+    }
+
+    .cta {
+      margin-top: 16px;
+      display: inline-block;
+      padding: .75rem 1rem;
+      border-radius: 12px;
+      background: #ff4d6d;
+      color: #000;
+      font-weight: 800;
+      text-decoration: none
+    }
+
+    .cardy {
+      background: var(--card);
+      border: 1px solid rgba(255, 255, 255, .08);
+      padding: 18px 20px;
+      border-radius: 16px;
+      backdrop-filter: blur(4px)
+    }
+
+    .debug {
+      position: fixed;
+      bottom: 8px;
+      left: 8px;
+      font: 12px/1.2 ui-monospace, Consolas, monospace;
+      color: #aaa
+    }
+  </style>
+</head>
+
+<body>
+
+  <div id="bg">
+    <% const ytId=(settings && settings.bg_youtube_id ? String(settings.bg_youtube_id) : '' ).trim(); %>
+      <% if (ytId) { %>
+        <div class="video-bg">
+          <iframe
+            src="https://www.youtube-nocookie.com/embed/<%= ytId %>?autoplay=1&mute=1&controls=0&loop=1&playlist=<%= ytId %>&modestbranding=1&playsinline=1&rel=0"
+            title="Background" allow="autoplay; encrypted-media; picture-in-picture"
+            referrerpolicy="strict-origin-when-cross-origin">
+          </iframe>
+        </div>
+        <% } %>
+          <div class="overlay"></div>
+  </div>
+
+  <div class="container notfound-wrap">
+    <div class="cardy">
+      <h1>This page isn't found 😅</h1>
+      <p>Head back to the main one, silly goose.</p>
+      <a class="cta" href="/">Go to home</a>
+    </div>
+  </div>
+
+</body>
+
+</html>

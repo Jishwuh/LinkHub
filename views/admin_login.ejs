@@ -1,0 +1,27 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Admin Login</title>
+  <link rel="stylesheet" href="/static/css/site.css">
+</head>
+
+<body>
+  <div class="auth-container">
+    <form method="POST" action="/admin/login" class="form">
+      <h1>Admin Login</h1>
+      <% if (error) { %>
+        <p class="error">
+          <%= error %>
+        </p>
+        <% } %>
+          <label>Username<input name="username" autocomplete="username"></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password"></label>
+          <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+
+</html>

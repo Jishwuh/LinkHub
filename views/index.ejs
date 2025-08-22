@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>
+    <%= settings.page_title || settings.site_title || 'LinkHub' %>
+  </title>
+
+  <!-- Open Graph / Discord -->
+  <meta property="og:title" content="<%= settings.page_title || settings.site_title || 'LinkHub' %>">
+  <meta property="og:description" content="<%= settings.meta_description || 'All my links in one place!' %>">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="<%= settings.site_url || 'https://example.com' %>">
+  <meta property="og:image" content="<%= settings.og_image_abs || '/static/og-default.jpg' %>">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="<%= settings.page_title || settings.site_title || 'LinkHub' %>">
+  <meta name="twitter:description" content="<%= settings.meta_description || 'All my links in one place!' %>">
+  <meta name="twitter:image" content="<%= settings.og_image_abs || '/static/og-default.jpg' %>">
+  <meta name="theme-color" content="<%= settings.theme_color || '#ff4d6d' %>">
+
+  <link rel="stylesheet" href="/static/css/site.css">
+</head>
+
+<body>
+  <div id="bg">
+    <% if (settings.bg_youtube_id) { %>
+      <div class="video-bg">
+        <iframe
+          src="https://www.youtube-nocookie.com/embed/<%= settings.bg_youtube_id %>?autoplay=1&mute=1&loop=1&playlist=<%= settings.bg_youtube_id %>&controls=0&showinfo=0&modestbranding=1&playsinline=1&rel=0"
+          allow="autoplay; fullscreen" frameborder="0"></iframe>
+      </div>
+      <% } %>
+        <div class="overlay"></div>
+  </div>
+
+  <div class="container">
+    <header class="hero">
+      <div class="avatar-wrap">
+        <% if (settings.avatar_path) { %>
+          <img class="avatar" src="<%= settings.avatar_path %>" alt="avatar">
+          <% } else { %>
+            <div class="avatar placeholder">🙂</div>
+            <% } %>
+      </div>
+      <div class="identity">
+        <div class="handle">
+          <%= settings.handle || '@handle' %>
+        </div>
+        <div class="display-name">
+          <%= settings.display_name || '' %>
+        </div>
+      </div>
+      <% if (settings.bio) { %>
+        <p class="bio"><%- settings.bio %></p>
+        <% } %>
+    </header>
+
+    <div class="topbar">
+      <div class="top-actions">
+        <button id="like-btn" class="like-pill" title="Like">
+          <span class="heart">❤</span>
+          <span id="like-count" class="count">0</span>
+        </button>
+        <button id="share-btn" class="icon-btn" title="Copy link">
+          <span>🔗</span>
+        </button>
+      </div>
+    </div>
+
+    <main class="links">
+      <% links.forEach(l=> { %>
+        <a class="link-card" href="<%= l.url %>" target="_blank" rel="noopener"
+          style="--btn-bg: <%= (l.color_hex && l.color_hex.trim()) ? l.color_hex.trim() : 'var(--card)' %>;">
+          <% if (l.icon_key) { %>
+            <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
+            <% } %>
+              <span class="label">
+                <%= l.title %>
+              </span>
+        </a>
+        <% }) %>
+    </main>
+
+    <% if (embeds && embeds.length) { %>
+      <section class="live-embeds">
+        <% embeds.forEach(e=> { if (!e.is_visible) return; %>
+          <article class="card">
+            <h3>
+              <%= e.title %>
+            </h3>
+            <div class="ratio"><%- e.embed_html %></div>
+          </article>
+          <% }) %>
+      </section>
+      <% } %>
+
+        <footer class="footer"><%- footerHtml %></footer>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const likeBtn = document.getElementById('like-btn');     // the pill
+      const likeCount = document.getElementById('like-count');   // the number
+      let liked = false;        // server truth for this visitor
+      let inFlight = false;     // prevent spamming
+
+      // ---- 1) Initialize from server (authoritative) ----
+      // Make sure your /api/stats returns: { likes: number, liked: boolean }
+      (async () => {
+        try {
+          const r = await fetch('/api/stats', { headers: { 'Accept': 'application/json' } });
+          const j = await r.json();
+          if (typeof j.likes === 'number') likeCount.textContent = j.likes;
+          if (j.liked) {
+            liked = true;
+            likeBtn.classList.add('liked');      // show red state
+            likeBtn.setAttribute('aria-disabled', 'true');
+          }
+        } catch (e) {
+          // ignore; keep defaults
+        }
+      })();
+
+      // ---- 2) Handle click safely ----
+      likeBtn.addEventListener('click', async () => {
+        if (liked || inFlight) return;           // already liked or request running
+        inFlight = true;
+        likeBtn.classList.add('busy');           // optional visual "disabled"
+
+        try {
+          const r = await fetch('/api/like', { method: 'POST', headers: { 'Accept': 'application/json' } });
+          const j = await r.json();
+          // Server should return { liked:boolean, likes:number }
+          if ('likes' in j) likeCount.textContent = j.likes;  // always trust server count
+
+          if (j.liked) {
+            liked = true;
+            likeBtn.classList.add('liked', 'pop');            // turn red + tiny pop
+            likeBtn.setAttribute('aria-disabled', 'true');
+            setTimeout(() => likeBtn.classList.remove('pop'), 350);
+          }
+        } catch (e) {
+          // optionally show a toast; no optimistic increments
+        } finally {
+          likeBtn.classList.remove('busy');
+          inFlight = false;
+        }
+      });
+    });
+  </script>
+  <script>
+    document.getElementById('share-btn').addEventListener('click', async () => {
+      const url = "<%= settings.site_url || '' %>" || window.location.href;
+      try { await navigator.clipboard.writeText(url); alert('Link copied'); } catch { alert('Copy failed'); }
+    });
+    refreshStats();
+  </script>
+</body>
+
+</html>
