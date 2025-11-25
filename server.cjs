@@ -32,6 +32,7 @@ const config = {
 if (!config.pool) config.pool = config.db;
 
 const app = express();
+app.use(csrf());
 app.set('trust proxy', 1);
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
@@ -106,7 +107,8 @@ const storage = multer.diskStorage({
   filename: (req, file, cb) => {
     const ext = (file.originalname.split('.').pop() || 'png').toLowerCase();
     const isOG = file.fieldname === 'og_image_file';
-    const name = isOG ? `og-${Date.now()}.${ext}` : `avatar.${ext}`;
+    const random = crypto.randomBytes(12).toString('hex');
+    const name = isOG ? `og-${Date.now()}-${random}.${ext}` : `avatar-${random}.${ext}`;
     cb(null, name);
   }
 });
@@ -122,6 +124,15 @@ const uploadFields = upload.fields([{ name: 'avatar', maxCount: 1 }, { name: 'og
 
 function requireAuth(req, res, next) { if (req.session.userId) return next(); return res.redirect('/admin/login'); }
 const clientIp = req => (req.headers['cf-connecting-ip'] || req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.ip || '').toString().split(',')[0].trim();
+
+async function deleteUploadIfLocal(relUrl) {
+  if (!relUrl || typeof relUrl !== 'string') return;
+  if (!relUrl.startsWith('/static/uploads/')) return;
+  const filePath = path.join(__dirname, 'public', relUrl.replace(/^\/static\//, ''));
+  const rel = path.relative(uploadsDir, filePath);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return;
+  try { await fs.promises.unlink(filePath); } catch { /* ignore missing files */ }
+}
 
 async function ensureRedirectsSchema() {
   const cols = await q('SHOW COLUMNS FROM redirects').catch(() => []);
@@ -338,6 +349,7 @@ app.post('/admin/link/delete', requireAuth, csrfProtection, async (req, res) => 
 
 app.post('/admin/settings', requireAuth, uploadFields, csrfProtection, async (req, res) => {
   const allowedKeys = ['site_title', 'bg_youtube_id', 'footer_html', 'twitch_channel', 'tiktok_embed_html', 'display_name', 'handle', 'bio', 'avatar_path', 'page_title', 'site_url', 'og_image', 'og_description', 'theme_color'];
+  const existingSettings = await getSettingsMap();
   for (const key of allowedKeys) {
     if (key in req.body) {
       let value = String(req.body[key] || '');
@@ -356,10 +368,16 @@ app.post('/admin/settings', requireAuth, uploadFields, csrfProtection, async (re
   if (req.files && req.files.avatar && req.files.avatar[0]) {
     const rel = '/static/uploads/' + req.files.avatar[0].filename;
     await run('INSERT INTO settings (`key`,value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', ['avatar_path', rel]);
+    if (existingSettings.avatar_path && existingSettings.avatar_path !== rel) {
+      await deleteUploadIfLocal(existingSettings.avatar_path);
+    }
   }
   if (req.files && req.files.og_image_file && req.files.og_image_file[0]) {
     const rel = '/static/uploads/' + req.files.og_image_file[0].filename;
     await run('INSERT INTO settings (`key`,value) VALUES (?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)', ['og_image', rel]);
+    if (existingSettings.og_image && existingSettings.og_image !== rel) {
+      await deleteUploadIfLocal(existingSettings.og_image);
+    }
   }
   res.redirect('/admin');
 });
@@ -410,7 +428,8 @@ app.post('/admin/redirect/delete', requireAuth, csrfProtection, async (req, res)
   res.redirect('/admin');
 });
 
-app.get('/debug/settings', async (req, res, next) => {
+app.get('/debug/settings', requireAuth, async (req, res, next) => {
+  if (config.env === 'production') return res.status(404).send('Not found');
   try { res.json(await getSettingsMap()); } catch (e) { next(e); }
 });
 
