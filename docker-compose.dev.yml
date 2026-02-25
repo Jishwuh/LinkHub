@@ -1,0 +1,22 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: linkhub-dev-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: linkhub_dev
+      MYSQL_USER: linkhub
+      MYSQL_PASSWORD: linkhub_password
+      MYSQL_ROOT_PASSWORD: root_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - linkhub_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_password"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  linkhub_mysql_data:

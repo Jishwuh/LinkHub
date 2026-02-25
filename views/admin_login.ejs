@@ -1,5 +1,5 @@
 <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8">
@@ -11,14 +11,13 @@
 <body>
   <div class="auth-container">
     <form method="POST" action="/admin/login" class="form">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
       <h1>Admin Login</h1>
       <% if (error) { %>
-        <p class="error">
-          <%= error %>
-        </p>
+        <p class="error"><%= error %></p>
         <% } %>
-          <label>Username<input name="username" autocomplete="username"></label>
-          <label>Password<input name="password" type="password" autocomplete="current-password"></label>
+          <label>Username<input name="username" autocomplete="username" required></label>
+          <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
           <button type="submit">Sign in</button>
     </form>
   </div>
