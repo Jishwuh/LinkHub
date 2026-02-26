@@ -24,16 +24,44 @@
   <link rel="stylesheet" href="/static/css/site.css">
 </head>
 
-<body>
-  <div id="bg">
-    <% if (settings.bg_youtube_id) { %>
-      <div class="video-bg">
+<body
+  class="font-<%= settings.font_theme %> anim-<%= settings.animation_style %> btn-<%= settings.button_style %> links-<%= settings.link_layout %>"
+  data-theme-color="<%= settings.theme_color || '#ff4d6d' %>"
+  data-overlay-opacity="<%= settings.overlay_opacity %>"
+  data-background-blur="<%= settings.background_blur %>"
+  data-background-mode="<%= settings.background_mode %>"
+  data-particles-density="<%= settings.particles_density %>"
+  data-particles-speed="<%= settings.particles_speed %>">
+  <div id="bg" class="bg-<%= settings.background_mode %> gradient-<%= settings.background_gradient %> pattern-<%= settings.background_pattern %>">
+    <% if (settings.background_mode === 'youtube' && settings.bg_youtube_id) { %>
+      <div class="video-bg video-bg-frame">
         <iframe
           src="https://www.youtube-nocookie.com/embed/<%= settings.bg_youtube_id %>?autoplay=1&mute=1&loop=1&playlist=<%= settings.bg_youtube_id %>&controls=0&showinfo=0&modestbranding=1&playsinline=1&rel=0"
-          allow="autoplay; fullscreen" frameborder="0" title="Background video"></iframe>
+          allow="autoplay; fullscreen"
+          frameborder="0"
+          title="Background video"></iframe>
       </div>
       <% } %>
-        <div class="overlay"></div>
+
+      <% if (settings.background_mode === 'image' && settings.background_image_src) { %>
+        <div class="image-bg">
+          <img src="<%= settings.background_image_src %>" alt="Background" loading="lazy">
+        </div>
+        <% } %>
+
+          <% if (settings.background_mode === 'video' && settings.background_video_src) { %>
+            <div class="video-bg video-file-bg">
+              <video autoplay muted loop playsinline preload="metadata">
+                <source src="<%= settings.background_video_src %>">
+              </video>
+            </div>
+            <% } %>
+
+              <% if (settings.background_mode === 'particles') { %>
+                <canvas id="particle-bg" aria-hidden="true"></canvas>
+                <% } %>
+
+                  <div class="overlay"></div>
   </div>
 
   <div class="container">
@@ -42,7 +70,7 @@
         <% if (settings.avatar_path) { %>
           <img class="avatar" src="<%= settings.avatar_path %>" alt="Avatar">
           <% } else { %>
-            <div class="avatar placeholder">:)</div>
+            <div class="avatar placeholder"><%= settings.avatar_emoji || '🙂' %></div>
             <% } %>
       </div>
       <div class="identity">
@@ -57,11 +85,11 @@
     <div class="topbar">
       <div class="top-actions">
         <button id="like-btn" class="like-pill" title="Like" type="button" aria-label="Like this page">
-          <span class="heart">❤</span>
+          <span class="heart"><%= settings.like_emoji || '❤' %></span>
           <span id="like-count" class="count">0</span>
         </button>
         <button id="share-btn" class="icon-btn" title="Copy link" type="button" aria-label="Share this page">
-          <span>🔗</span>
+          <span><%= settings.share_emoji || '🔗' %></span>
         </button>
       </div>
     </div>
@@ -73,6 +101,7 @@
             <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
             <% } %>
               <span class="label"><%= l.title %></span>
+              <span class="link-arrow" aria-hidden="true">↗</span>
         </a>
         <% }) %>
     </main>

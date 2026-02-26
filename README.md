@@ -1,6 +1,6 @@
 # LinkHub
 
-LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirects, embeds, and basic analytics.
+LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirects, embeds, analytics, and a large visual customization system.
 
 ## Highlights
 
@@ -12,6 +12,59 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
 - CI workflow with syntax checks and tests
+
+## Customization Studio
+
+Everything below is configurable from **Admin -> Site Settings**.
+
+### Background engine
+
+- `YouTube` background mode (existing behavior)
+- `Image` background mode
+  - URL image
+  - Uploaded image file
+- `Video` background mode
+  - URL video
+  - Uploaded video file
+- `Gradient` background mode with presets
+  - `sunset`, `ocean`, `forest`, `neon`, `midnight`
+- `JS Particles` background mode (animated canvas particles)
+
+### Background controls
+
+- Pattern overlays: `none`, `grid`, `dots`, `noise`
+- Overlay opacity control
+- Blur strength control
+- Particle density + particle speed controls
+
+### Layout and button organization
+
+- Link layouts:
+  - `list`
+  - `grid`
+  - `compact`
+  - `table`
+- Button styles:
+  - `rounded`
+  - `pill`
+  - `square`
+  - `glass`
+
+### Typography, motion, and personality
+
+- Font themes:
+  - `modern`
+  - `editorial`
+  - `rounded`
+  - `mono`
+- Animation styles:
+  - `none`
+  - `subtle`
+  - `energetic`
+- Emoji customizers:
+  - Fallback avatar emoji
+  - Like button emoji
+  - Share button emoji
 
 ## Tech Stack
 
@@ -104,7 +157,9 @@ npm start
 ## Security Notes
 
 - Only `http/https` URLs are accepted for links and redirects.
-- File uploads are restricted to PNG/JPG/WEBP/GIF.
+- File uploads are restricted by field:
+  - Avatar / OG: PNG, JPG, WEBP, GIF
+  - Background media: PNG, JPG, WEBP, GIF, MP4, WEBM, OGG
 - Rich text and embeds are sanitized before storage.
 - Session-backed CSRF token is required on admin writes.
 - `TRUST_PROXY` should match your deployment topology.

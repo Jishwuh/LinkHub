@@ -18,200 +18,434 @@
       </form>
     </div>
 
-    <form class="form form-wide" id="settings-form" method="POST" action="/admin/settings" enctype="multipart/form-data">
+    <form class="form form-wide settings-shell" id="settings-form" method="POST" action="/admin/settings" enctype="multipart/form-data">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-      <h2>Site Settings</h2>
-      <div class="grid">
-        <label>Site title<input name="site_title" value="<%= settings.site_title || '' %>"></label>
-        <label>Handle<input name="handle" value="<%= settings.handle || '' %>"></label>
-        <label>Display name<input name="display_name" value="<%= settings.display_name || '' %>"></label>
-        <label>Theme color<input name="theme_color" type="color" value="<%= settings.theme_color || '#ff4d6d' %>"></label>
-      </div>
-      <label>Bio<textarea name="bio" rows="3"><%= settings.bio || '' %></textarea></label>
 
-      <div class="grid">
-        <label>Avatar file<input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif"></label>
-        <label>Background YouTube ID<input name="bg_youtube_id" value="<%= settings.bg_youtube_id || '' %>"></label>
+      <div class="settings-header">
+        <div>
+          <h2>Site Settings</h2>
+          <p class="muted">Edit one section at a time. Preview updates instantly before saving.</p>
+        </div>
+        <button type="submit" class="settings-save">Save settings</button>
       </div>
 
-      <h2>Open Graph / Social Share</h2>
-      <div class="grid">
-        <label>Page title<input name="page_title" value="<%= settings.page_title || '' %>" placeholder="Embed title"></label>
-        <label>Canonical URL<input name="site_url" type="url" value="<%= settings.site_url || '' %>" placeholder="https://yourdomain.com"></label>
+      <div class="settings-tabs" role="tablist" aria-label="Settings Sections">
+        <button type="button" class="settings-tab active" data-tab="profile" aria-selected="true">Profile</button>
+        <button type="button" class="settings-tab" data-tab="background" aria-selected="false">Background</button>
+        <button type="button" class="settings-tab" data-tab="design" aria-selected="false">Design</button>
+        <button type="button" class="settings-tab" data-tab="share" aria-selected="false">Share</button>
       </div>
-      <label>Embed description<textarea name="og_description" rows="2"><%= settings.og_description || '' %></textarea></label>
-      <div class="grid">
-        <label>OG image URL<input name="og_image" type="url" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg"></label>
-        <label>Upload OG image<input type="file" name="og_image_file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+
+      <div class="settings-layout">
+        <div class="settings-main">
+          <section class="settings-panel" data-panel="profile">
+            <h3>Profile Basics</h3>
+            <div class="grid">
+              <label>Site title<input name="site_title" value="<%= settings.site_title || '' %>"></label>
+              <label>Handle<input name="handle" value="<%= settings.handle || '' %>"></label>
+              <label>Display name<input name="display_name" value="<%= settings.display_name || '' %>"></label>
+              <label>Theme color<input name="theme_color" type="color" value="<%= settings.theme_color || '#ff4d6d' %>"></label>
+            </div>
+            <label>Bio<textarea name="bio" rows="4"><%= settings.bio || '' %></textarea></label>
+
+            <div class="grid">
+              <label>Avatar file<input type="file" name="avatar" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+              <label>Avatar emoji (fallback)<input name="avatar_emoji" value="<%= settings.avatar_emoji || '🙂' %>"></label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="background" hidden>
+            <h3>Background Mode</h3>
+            <div class="grid compact-grid">
+              <label>
+                <span class="label-with-tip">Background mode
+                  <span class="field-tip" tabindex="0" data-tip="Choose the visual engine for your background.">?</span>
+                </span>
+                <select name="background_mode" id="background-mode">
+                  <option value="youtube" <%= settings.background_mode === 'youtube' ? 'selected' : '' %>>YouTube</option>
+                  <option value="image" <%= settings.background_mode === 'image' ? 'selected' : '' %>>Image</option>
+                  <option value="video" <%= settings.background_mode === 'video' ? 'selected' : '' %>>Video</option>
+                  <option value="gradient" <%= settings.background_mode === 'gradient' ? 'selected' : '' %>>Gradient</option>
+                  <option value="particles" <%= settings.background_mode === 'particles' ? 'selected' : '' %>>JS Particles</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="youtube">
+              <label>
+                <span class="label-with-tip">YouTube ID
+                  <span class="field-tip" tabindex="0" data-tip="Paste only the video ID, not the full URL.">?</span>
+                </span>
+                <input name="bg_youtube_id" value="<%= settings.bg_youtube_id || '' %>" placeholder="dQw4w9WgXcQ">
+              </label>
+              <label>
+                <span class="label-with-tip">Blur strength px
+                  <span class="field-tip" tabindex="0" data-tip="Higher blur softens the moving video so text stays readable.">?</span>
+                </span>
+                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="image">
+              <label>Background image URL<input name="background_image_url" type="url" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg"></label>
+              <label>Upload image<input type="file" name="background_media_file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+              <label>
+                <span class="label-with-tip">Pattern overlay
+                  <span class="field-tip" tabindex="0" data-tip="Adds subtle texture on top of your image.">?</span>
+                </span>
+                <select name="background_pattern">
+                  <option value="none" <%= settings.background_pattern === 'none' ? 'selected' : '' %>>None</option>
+                  <option value="grid" <%= settings.background_pattern === 'grid' ? 'selected' : '' %>>Grid</option>
+                  <option value="dots" <%= settings.background_pattern === 'dots' ? 'selected' : '' %>>Dots</option>
+                  <option value="noise" <%= settings.background_pattern === 'noise' ? 'selected' : '' %>>Noise</option>
+                </select>
+              </label>
+              <label>
+                <span class="label-with-tip">Blur strength px
+                  <span class="field-tip" tabindex="0" data-tip="Use small values to keep image detail visible.">?</span>
+                </span>
+                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="video">
+              <label>Background video URL<input name="background_video_url" type="url" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4"></label>
+              <label>Upload video<input type="file" name="background_media_file" accept="video/mp4,video/webm,video/ogg"></label>
+              <label>
+                <span class="label-with-tip">Blur strength px
+                  <span class="field-tip" tabindex="0" data-tip="Softens motion-heavy videos behind your content.">?</span>
+                </span>
+                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="gradient">
+              <label>
+                <span class="label-with-tip">Gradient preset
+                  <span class="field-tip" tabindex="0" data-tip="Color palette for a static background.">?</span>
+                </span>
+                <select name="background_gradient">
+                  <option value="sunset" <%= settings.background_gradient === 'sunset' ? 'selected' : '' %>>Sunset</option>
+                  <option value="ocean" <%= settings.background_gradient === 'ocean' ? 'selected' : '' %>>Ocean</option>
+                  <option value="forest" <%= settings.background_gradient === 'forest' ? 'selected' : '' %>>Forest</option>
+                  <option value="neon" <%= settings.background_gradient === 'neon' ? 'selected' : '' %>>Neon</option>
+                  <option value="midnight" <%= settings.background_gradient === 'midnight' ? 'selected' : '' %>>Midnight</option>
+                </select>
+              </label>
+              <label>
+                <span class="label-with-tip">Pattern overlay
+                  <span class="field-tip" tabindex="0" data-tip="Texture layer over the gradient.">?</span>
+                </span>
+                <select name="background_pattern">
+                  <option value="none" <%= settings.background_pattern === 'none' ? 'selected' : '' %>>None</option>
+                  <option value="grid" <%= settings.background_pattern === 'grid' ? 'selected' : '' %>>Grid</option>
+                  <option value="dots" <%= settings.background_pattern === 'dots' ? 'selected' : '' %>>Dots</option>
+                  <option value="noise" <%= settings.background_pattern === 'noise' ? 'selected' : '' %>>Noise</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="particles">
+              <label>
+                <span class="label-with-tip">Particle density
+                  <span class="field-tip" tabindex="0" data-tip="How many particles appear on screen at once.">?</span>
+                </span>
+                <input name="particles_density" type="number" min="20" max="180" step="1" value="<%= settings.particles_density %>">
+              </label>
+              <label>
+                <span class="label-with-tip">Particle speed
+                  <span class="field-tip" tabindex="0" data-tip="How fast particles drift. Lower is calmer.">?</span>
+                </span>
+                <input name="particles_speed" type="number" min="0.2" max="3" step="0.1" value="<%= settings.particles_speed %>">
+              </label>
+            </div>
+
+            <div class="grid compact-grid bg-mode-group" data-bg-visible="youtube,image,video,gradient,particles">
+              <label>
+                <span class="label-with-tip">Overlay opacity (0 to 0.9)
+                  <span class="field-tip" tabindex="0" data-tip="Darkens the background to improve readability.">?</span>
+                </span>
+                <input name="overlay_opacity" type="number" min="0" max="0.9" step="0.05" value="<%= settings.overlay_opacity %>">
+              </label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="design" hidden>
+            <h3>Design System</h3>
+            <div class="grid">
+              <label>
+                <span class="label-with-tip">Link layout
+                  <span class="field-tip" tabindex="0" data-tip="Changes how link buttons are arranged on your page.">?</span>
+                </span>
+                <select name="link_layout">
+                  <option value="list" <%= settings.link_layout === 'list' ? 'selected' : '' %>>List</option>
+                  <option value="grid" <%= settings.link_layout === 'grid' ? 'selected' : '' %>>Grid</option>
+                  <option value="compact" <%= settings.link_layout === 'compact' ? 'selected' : '' %>>Compact</option>
+                  <option value="table" <%= settings.link_layout === 'table' ? 'selected' : '' %>>Table</option>
+                </select>
+              </label>
+              <label>
+                <span class="label-with-tip">Button style
+                  <span class="field-tip" tabindex="0" data-tip="Shape and visual feel of every button.">?</span>
+                </span>
+                <select name="button_style">
+                  <option value="rounded" <%= settings.button_style === 'rounded' ? 'selected' : '' %>>Rounded</option>
+                  <option value="pill" <%= settings.button_style === 'pill' ? 'selected' : '' %>>Pill</option>
+                  <option value="square" <%= settings.button_style === 'square' ? 'selected' : '' %>>Square</option>
+                  <option value="glass" <%= settings.button_style === 'glass' ? 'selected' : '' %>>Glass</option>
+                </select>
+              </label>
+              <label>
+                <span class="label-with-tip">Font theme
+                  <span class="field-tip" tabindex="0" data-tip="Changes typography personality across your page.">?</span>
+                </span>
+                <select name="font_theme">
+                  <option value="modern" <%= settings.font_theme === 'modern' ? 'selected' : '' %>>Modern</option>
+                  <option value="editorial" <%= settings.font_theme === 'editorial' ? 'selected' : '' %>>Editorial</option>
+                  <option value="rounded" <%= settings.font_theme === 'rounded' ? 'selected' : '' %>>Rounded</option>
+                  <option value="mono" <%= settings.font_theme === 'mono' ? 'selected' : '' %>>Monospace</option>
+                </select>
+              </label>
+              <label>
+                <span class="label-with-tip">Animation style
+                  <span class="field-tip" tabindex="0" data-tip="Controls how much motion users see.">?</span>
+                </span>
+                <select name="animation_style">
+                  <option value="none" <%= settings.animation_style === 'none' ? 'selected' : '' %>>None</option>
+                  <option value="subtle" <%= settings.animation_style === 'subtle' ? 'selected' : '' %>>Subtle</option>
+                  <option value="energetic" <%= settings.animation_style === 'energetic' ? 'selected' : '' %>>Energetic</option>
+                </select>
+              </label>
+              <label>Like emoji<input name="like_emoji" value="<%= settings.like_emoji || '❤' %>"></label>
+              <label>Share emoji<input name="share_emoji" value="<%= settings.share_emoji || '🔗' %>"></label>
+            </div>
+          </section>
+
+          <section class="settings-panel" data-panel="share" hidden>
+            <h3>Open Graph and Share</h3>
+            <div class="grid">
+              <label>Page title<input name="page_title" value="<%= settings.page_title || '' %>" placeholder="Embed title"></label>
+              <label>Canonical URL<input name="site_url" type="url" value="<%= settings.site_url || '' %>" placeholder="https://yourdomain.com"></label>
+            </div>
+            <label>Embed description<textarea name="og_description" rows="3"><%= settings.og_description || '' %></textarea></label>
+            <div class="grid">
+              <label>OG image URL<input name="og_image" type="url" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg"></label>
+              <label>Upload OG image<input type="file" name="og_image_file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
+            </div>
+            <label>Footer HTML<textarea name="footer_html" rows="3"><%= settings.footer_html || '' %></textarea></label>
+          </section>
+        </div>
+
+        <aside class="settings-sidebar">
+          <div class="preview-card">
+            <h3>Live Preview</h3>
+            <p class="muted small">This updates before you save so you can compare styles quickly.</p>
+            <div
+              id="design-preview"
+              class="design-preview"
+              data-initial-font="<%= settings.font_theme %>"
+              data-initial-layout="<%= settings.link_layout %>"
+              data-initial-button="<%= settings.button_style %>"
+              data-initial-animation="<%= settings.animation_style %>"
+              data-initial-mode="<%= settings.background_mode %>"
+              data-initial-gradient="<%= settings.background_gradient %>"
+              data-initial-pattern="<%= settings.background_pattern %>">
+              <div id="design-preview-bg" class="design-preview-bg"></div>
+              <div id="design-preview-overlay" class="design-preview-overlay"></div>
+              <div class="design-preview-content">
+                <div class="design-preview-handle" id="preview-handle"><%= settings.handle || '@handle' %></div>
+                <div class="design-preview-name" id="preview-name"><%= settings.display_name || 'Display Name' %></div>
+                <div class="design-preview-bio" id="preview-bio">Previewing fonts, layouts, button styles, and background behavior.</div>
+                <div class="design-preview-actions">
+                  <span id="preview-like"><%= settings.like_emoji || '❤' %> 124</span>
+                  <span id="preview-share"><%= settings.share_emoji || '🔗' %></span>
+                </div>
+                <div id="design-preview-links" class="design-preview-links">
+                  <div class="preview-link">GitHub</div>
+                  <div class="preview-link">Portfolio</div>
+                  <div class="preview-link">Contact</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
       </div>
-      <label>Footer HTML<textarea name="footer_html" rows="2"><%= settings.footer_html || '' %></textarea></label>
-      <button type="submit">Save settings</button>
+
+      <div class="settings-footer">
+        <button type="submit" class="settings-save">Save settings</button>
+      </div>
     </form>
 
-    <section class="card section-card">
-      <h2>Links</h2>
-      <form id="link-form" class="form form-wide" method="POST" action="/admin/link">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <input type="hidden" name="id" id="link-id">
-        <div class="grid">
-          <label>Title<input name="title" id="link-title" required></label>
-          <label>URL<input name="url" id="link-url" type="url" required></label>
-          <label>Icon key
-            <select name="icon_key" id="link-icon">
-              <option value="">(none)</option>
-              <% icons.forEach(i => { %>
-                <option value="<%= i %>"><%= i %></option>
-                <% }) %>
-            </select>
-          </label>
-          <label>Button color<input name="color_hex" id="link-color" type="color" value="#2a2a2a"></label>
-          <label>Order<input name="order_index" id="link-order" type="number" value="0"></label>
-          <label class="checkbox"><input type="checkbox" name="is_visible" id="link-visible" checked> Visible</label>
-        </div>
-        <div class="actions">
-          <button id="link-submit" type="submit">Add Link</button>
-          <button id="link-cancel" type="button" class="btn-secondary hidden">Cancel</button>
-        </div>
-      </form>
-
-      <div class="table">
-        <div class="row head">
-          <div>ID</div>
-          <div>Title</div>
-          <div>URL</div>
-          <div>Icon</div>
-          <div>Color</div>
-          <div>Order</div>
-          <div>Visible</div>
-          <div>Actions</div>
-        </div>
-        <% links.forEach(l => { %>
-          <div class="row">
-            <div><%= l.id %></div>
-            <div><%= l.title %></div>
-            <div><a href="<%= l.url %>" target="_blank" rel="noopener noreferrer"><%= l.url %></a></div>
-            <div><%= l.icon_key || '' %></div>
-            <div><%= l.color_hex || '' %></div>
-            <div><%= l.order_index %></div>
-            <div><%= l.is_visible ? 'Yes' : 'No' %></div>
-            <div class="actions">
-              <button
-                type="button"
-                class="btn-secondary btn-edit"
-                data-id="<%= l.id %>"
-                data-title="<%= l.title %>"
-                data-url="<%= l.url %>"
-                data-icon="<%= l.icon_key || '' %>"
-                data-color="<%= l.color_hex || '' %>"
-                data-order="<%= l.order_index %>"
-                data-visible="<%= l.is_visible ? '1' : '0' %>">Edit</button>
-              <form method="POST" action="/admin/link/delete" class="confirm-delete-form" data-label="link #<%= l.id %>">
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <input type="hidden" name="id" value="<%= l.id %>">
-                <button class="btn-danger" type="submit">Delete</button>
-              </form>
-            </div>
+    <details class="admin-accordion" open>
+      <summary>Links</summary>
+      <section class="card section-card">
+        <form id="link-form" class="form form-wide" method="POST" action="/admin/link">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="id" id="link-id">
+          <div class="grid">
+            <label>Title<input name="title" id="link-title" required></label>
+            <label>URL<input name="url" id="link-url" type="url" required></label>
+            <label>Icon key
+              <select name="icon_key" id="link-icon">
+                <option value="">(none)</option>
+                <% icons.forEach(i => { %>
+                  <option value="<%= i %>"><%= i %></option>
+                  <% }) %>
+              </select>
+            </label>
+            <label>Button color<input name="color_hex" id="link-color" type="color" value="#2a2a2a"></label>
+            <label>Order<input name="order_index" id="link-order" type="number" value="0"></label>
+            <label class="checkbox"><input type="checkbox" name="is_visible" id="link-visible" checked> Visible</label>
           </div>
-          <% }) %>
-      </div>
-    </section>
-
-    <section class="card section-card">
-      <h2>Custom Embeds</h2>
-      <form class="form form-wide" method="POST" action="/admin/embed">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <input type="hidden" id="embed-id" name="id">
-        <label>Title<input name="title" id="embed-title" required></label>
-        <label>Embed HTML<textarea name="embed_html" id="embed-html" rows="4" required></textarea></label>
-        <div class="grid">
-          <label>Order<input name="order_index" id="embed-order" type="number" value="0"></label>
-          <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-visible" checked> Visible</label>
-        </div>
-        <div class="actions">
-          <button type="submit">Save Embed</button>
-        </div>
-      </form>
-      <div class="table">
-        <div class="row head row-embed-head">
-          <div>ID</div>
-          <div>Title</div>
-          <div>Order</div>
-          <div>Visible</div>
-          <div>Actions</div>
-        </div>
-        <% embeds.forEach(e => { %>
-          <div class="row row-embed">
-            <div><%= e.id %></div>
-            <div><%= e.title %></div>
-            <div><%= e.order_index %></div>
-            <div><%= e.is_visible ? 'Yes' : 'No' %></div>
-            <div class="actions">
-              <button
-                type="button"
-                class="btn-secondary btn-embed-edit"
-                data-id="<%= e.id %>"
-                data-title="<%= e.title %>"
-                data-order="<%= e.order_index %>"
-                data-visible="<%= e.is_visible ? '1' : '0' %>"
-                data-html="<%= safeJsonForAttr(e.embed_html) %>">Edit</button>
-              <form method="POST" action="/admin/embed/delete" class="confirm-delete-form" data-label="embed #<%= e.id %>">
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <input type="hidden" name="id" value="<%= e.id %>">
-                <button class="btn-danger" type="submit">Delete</button>
-              </form>
-            </div>
+          <div class="actions">
+            <button id="link-submit" type="submit">Add Link</button>
+            <button id="link-cancel" type="button" class="btn-secondary hidden">Cancel</button>
           </div>
-          <% }) %>
-      </div>
-    </section>
+        </form>
 
-    <section class="card section-card">
-      <h2>Redirects</h2>
-      <form class="form form-wide" method="POST" action="/admin/redirect" id="redirect-form">
-        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-        <input type="hidden" name="id" id="redirect-id">
-        <div class="grid">
-          <label>Slug (no slash)<input name="slug" id="redirect-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required></label>
-          <label>Target URL<input name="target_url" id="redirect-url" type="url" placeholder="https://..." required></label>
-          <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-active" checked> Active</label>
-        </div>
-        <div class="actions">
-          <button id="redirect-submit" type="submit">Add Redirect</button>
-          <button id="redirect-cancel" type="button" class="btn-secondary hidden">Cancel</button>
-        </div>
-      </form>
-      <div class="table">
-        <div class="row head row-redirect-head">
-          <div>ID</div>
-          <div>Slug</div>
-          <div>Target</div>
-          <div>Active</div>
-          <div>Actions</div>
-        </div>
-        <% redirects.forEach(r => { %>
-          <div class="row row-redirect">
-            <div><%= r.id %></div>
-            <div>/<%= r.slug %></div>
-            <div><a href="<%= r.target_url %>" target="_blank" rel="noopener noreferrer"><%= r.target_url %></a></div>
-            <div><%= r.is_active ? 'Yes' : 'No' %></div>
-            <div class="actions">
-              <button
-                type="button"
-                class="btn-secondary btn-redirect-edit"
-                data-id="<%= r.id %>"
-                data-slug="<%= r.slug %>"
-                data-url="<%= r.target_url %>"
-                data-active="<%= r.is_active ? '1' : '0' %>">Edit</button>
-              <form method="POST" action="/admin/redirect/delete" class="confirm-delete-form" data-label="redirect #<%= r.id %>">
-                <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                <input type="hidden" name="id" value="<%= r.id %>">
-                <button class="btn-danger" type="submit">Delete</button>
-              </form>
-            </div>
+        <div class="table">
+          <div class="row head">
+            <div>ID</div>
+            <div>Title</div>
+            <div>URL</div>
+            <div>Icon</div>
+            <div>Color</div>
+            <div>Order</div>
+            <div>Visible</div>
+            <div>Actions</div>
           </div>
-          <% }) %>
-      </div>
-    </section>
+          <% links.forEach(l => { %>
+            <div class="row">
+              <div><%= l.id %></div>
+              <div><%= l.title %></div>
+              <div><a href="<%= l.url %>" target="_blank" rel="noopener noreferrer"><%= l.url %></a></div>
+              <div><%= l.icon_key || '' %></div>
+              <div><%= l.color_hex || '' %></div>
+              <div><%= l.order_index %></div>
+              <div><%= l.is_visible ? 'Yes' : 'No' %></div>
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn-secondary btn-edit"
+                  data-id="<%= l.id %>"
+                  data-title="<%= l.title %>"
+                  data-url="<%= l.url %>"
+                  data-icon="<%= l.icon_key || '' %>"
+                  data-color="<%= l.color_hex || '' %>"
+                  data-order="<%= l.order_index %>"
+                  data-visible="<%= l.is_visible ? '1' : '0' %>">Edit</button>
+                <form method="POST" action="/admin/link/delete" class="confirm-delete-form" data-label="link #<%= l.id %>">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="id" value="<%= l.id %>">
+                  <button class="btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+            <% }) %>
+        </div>
+      </section>
+    </details>
+
+    <details class="admin-accordion">
+      <summary>Custom Embeds</summary>
+      <section class="card section-card">
+        <form class="form form-wide" method="POST" action="/admin/embed">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" id="embed-id" name="id">
+          <label>Title<input name="title" id="embed-title" required></label>
+          <label>Embed HTML<textarea name="embed_html" id="embed-html" rows="4" required></textarea></label>
+          <div class="grid">
+            <label>Order<input name="order_index" id="embed-order" type="number" value="0"></label>
+            <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-visible" checked> Visible</label>
+          </div>
+          <div class="actions">
+            <button type="submit">Save Embed</button>
+          </div>
+        </form>
+        <div class="table">
+          <div class="row head row-embed-head">
+            <div>ID</div>
+            <div>Title</div>
+            <div>Order</div>
+            <div>Visible</div>
+            <div>Actions</div>
+          </div>
+          <% embeds.forEach(e => { %>
+            <div class="row row-embed">
+              <div><%= e.id %></div>
+              <div><%= e.title %></div>
+              <div><%= e.order_index %></div>
+              <div><%= e.is_visible ? 'Yes' : 'No' %></div>
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn-secondary btn-embed-edit"
+                  data-id="<%= e.id %>"
+                  data-title="<%= e.title %>"
+                  data-order="<%= e.order_index %>"
+                  data-visible="<%= e.is_visible ? '1' : '0' %>"
+                  data-html="<%= safeJsonForAttr(e.embed_html) %>">Edit</button>
+                <form method="POST" action="/admin/embed/delete" class="confirm-delete-form" data-label="embed #<%= e.id %>">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="id" value="<%= e.id %>">
+                  <button class="btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+            <% }) %>
+        </div>
+      </section>
+    </details>
+
+    <details class="admin-accordion">
+      <summary>Redirects</summary>
+      <section class="card section-card">
+        <form class="form form-wide" method="POST" action="/admin/redirect" id="redirect-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="id" id="redirect-id">
+          <div class="grid">
+            <label>Slug (no slash)<input name="slug" id="redirect-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required></label>
+            <label>Target URL<input name="target_url" id="redirect-url" type="url" placeholder="https://..." required></label>
+            <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-active" checked> Active</label>
+          </div>
+          <div class="actions">
+            <button id="redirect-submit" type="submit">Add Redirect</button>
+            <button id="redirect-cancel" type="button" class="btn-secondary hidden">Cancel</button>
+          </div>
+        </form>
+        <div class="table">
+          <div class="row head row-redirect-head">
+            <div>ID</div>
+            <div>Slug</div>
+            <div>Target</div>
+            <div>Active</div>
+            <div>Actions</div>
+          </div>
+          <% redirects.forEach(r => { %>
+            <div class="row row-redirect">
+              <div><%= r.id %></div>
+              <div>/<%= r.slug %></div>
+              <div><a href="<%= r.target_url %>" target="_blank" rel="noopener noreferrer"><%= r.target_url %></a></div>
+              <div><%= r.is_active ? 'Yes' : 'No' %></div>
+              <div class="actions">
+                <button
+                  type="button"
+                  class="btn-secondary btn-redirect-edit"
+                  data-id="<%= r.id %>"
+                  data-slug="<%= r.slug %>"
+                  data-url="<%= r.target_url %>"
+                  data-active="<%= r.is_active ? '1' : '0' %>">Edit</button>
+                <form method="POST" action="/admin/redirect/delete" class="confirm-delete-form" data-label="redirect #<%= r.id %>">
+                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+                  <input type="hidden" name="id" value="<%= r.id %>">
+                  <button class="btn-danger" type="submit">Delete</button>
+                </form>
+              </div>
+            </div>
+            <% }) %>
+        </div>
+      </section>
+    </details>
   </div>
   <script src="/static/js/admin.js" defer></script>
 </body>

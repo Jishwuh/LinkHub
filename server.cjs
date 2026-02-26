@@ -24,12 +24,25 @@ const ALLOWED_EMBED_HOSTNAMES = [
   'tiktok.com',
   'open.spotify.com'
 ];
-const UPLOAD_MIME_EXT = {
+const IMAGE_UPLOAD_MIME_EXT = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/webp': 'webp',
   'image/gif': 'gif'
 };
+const MEDIA_UPLOAD_MIME_EXT = {
+  ...IMAGE_UPLOAD_MIME_EXT,
+  'video/mp4': 'mp4',
+  'video/webm': 'webm',
+  'video/ogg': 'ogg'
+};
+const ALLOWED_BACKGROUND_MODES = ['youtube', 'image', 'video', 'gradient', 'particles'];
+const ALLOWED_LINK_LAYOUTS = ['list', 'grid', 'compact', 'table'];
+const ALLOWED_FONT_THEMES = ['modern', 'editorial', 'rounded', 'mono'];
+const ALLOWED_BUTTON_STYLES = ['rounded', 'pill', 'square', 'glass'];
+const ALLOWED_ANIMATION_STYLES = ['none', 'subtle', 'energetic'];
+const ALLOWED_GRADIENT_PRESETS = ['sunset', 'ocean', 'forest', 'neon', 'midnight'];
+const ALLOWED_PATTERN_PRESETS = ['none', 'grid', 'dots', 'noise'];
 
 function parseBoolean(value, defaultValue = false) {
   if (value == null || value === '') return defaultValue;
@@ -118,6 +131,24 @@ function sanitizeColorHex(value) {
   return '';
 }
 
+function sanitizeChoice(value, allowed, fallback) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return allowed.includes(normalized) ? normalized : fallback;
+}
+
+function sanitizeNumberRange(value, min, max, fallback, decimals = 2) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const clamped = Math.min(max, Math.max(min, parsed));
+  return Number(clamped.toFixed(decimals));
+}
+
+function sanitizeEmoji(value, fallback) {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  return Array.from(raw).slice(0, 4).join('');
+}
+
 function normalizeHttpUrl(value) {
   const raw = String(value || '').trim();
   if (!raw) return '';
@@ -140,6 +171,15 @@ function normalizeLocalAssetPath(value) {
   if (!raw.startsWith('/static/uploads/')) return '';
   if (raw.includes('..')) return '';
   return raw;
+}
+
+function normalizeMediaAsset(value) {
+  return normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
+}
+
+function mediaLooksLikeVideo(value) {
+  const raw = String(value || '').toLowerCase();
+  return /\.(mp4|webm|ogg)(\?|#|$)/.test(raw);
 }
 
 function sanitizeRichText(value) {
@@ -223,6 +263,7 @@ function createApp(passedConfig) {
             'https://www.tiktok.com',
             'https://open.spotify.com'
           ],
+          mediaSrc: ["'self'", 'https:'],
           connectSrc: ["'self'"],
           objectSrc: ["'none'"],
           baseUri: ["'none'"],
@@ -291,24 +332,32 @@ function createApp(passedConfig) {
   const storage = multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadsDir),
     filename: (_req, file, cb) => {
-      const ext = UPLOAD_MIME_EXT[file.mimetype] || 'bin';
+      const ext = MEDIA_UPLOAD_MIME_EXT[file.mimetype] || 'bin';
       const isOG = file.fieldname === 'og_image_file';
+      const isBackground = file.fieldname === 'background_media_file';
       const random = crypto.randomBytes(12).toString('hex');
-      const prefix = isOG ? 'og' : 'avatar';
+      const prefix = isBackground ? 'bg' : isOG ? 'og' : 'avatar';
       cb(null, `${prefix}-${Date.now()}-${random}.${ext}`);
     }
   });
   const upload = multer({
     storage,
-    limits: { fileSize: 2 * 1024 * 1024 },
+    limits: { fileSize: 25 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      const ok = Object.prototype.hasOwnProperty.call(UPLOAD_MIME_EXT, file.mimetype);
+      if (file.fieldname === 'background_media_file') {
+        const ok = Object.prototype.hasOwnProperty.call(MEDIA_UPLOAD_MIME_EXT, file.mimetype);
+        cb(ok ? null : new Error('Background upload must be image/video (PNG/JPG/WEBP/GIF/MP4/WEBM/OGG)'), ok);
+        return;
+      }
+
+      const ok = Object.prototype.hasOwnProperty.call(IMAGE_UPLOAD_MIME_EXT, file.mimetype);
       cb(ok ? null : new Error('Only PNG/JPG/WEBP/GIF uploads are allowed'), ok);
     }
   });
   const uploadFields = upload.fields([
     { name: 'avatar', maxCount: 1 },
-    { name: 'og_image_file', maxCount: 1 }
+    { name: 'og_image_file', maxCount: 1 },
+    { name: 'background_media_file', maxCount: 1 }
   ]);
 
   function requireAuth(req, res, next) {
@@ -358,8 +407,75 @@ function createApp(passedConfig) {
     return map;
   }
 
+  function resolveUiSettings(rawSettings) {
+    const settings = { ...rawSettings };
+    const backgroundMode = sanitizeChoice(settings.background_mode, ALLOWED_BACKGROUND_MODES, 'youtube');
+    const backgroundMedia = normalizeMediaAsset(settings.background_media_path);
+    const backgroundImageUrl = normalizeMediaAsset(settings.background_image_url);
+    const backgroundVideoUrl = normalizeMediaAsset(settings.background_video_url);
+
+    let backgroundImageSrc = '';
+    let backgroundVideoSrc = '';
+
+    if (backgroundMode === 'image') {
+      if (backgroundMedia && !mediaLooksLikeVideo(backgroundMedia)) backgroundImageSrc = backgroundMedia;
+      else if (backgroundImageUrl) backgroundImageSrc = backgroundImageUrl;
+    } else if (backgroundMode === 'video') {
+      if (backgroundMedia && mediaLooksLikeVideo(backgroundMedia)) backgroundVideoSrc = backgroundMedia;
+      else if (backgroundVideoUrl) backgroundVideoSrc = backgroundVideoUrl;
+    }
+
+    if (backgroundMode === 'image' && !backgroundImageSrc) {
+      backgroundImageSrc = normalizeLocalAssetPath(settings.avatar_path);
+    }
+
+    return {
+      ...settings,
+      bg_youtube_id: String(settings.bg_youtube_id || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32),
+      background_mode: backgroundMode,
+      background_media_path: backgroundMedia,
+      background_image_url: backgroundImageUrl,
+      background_video_url: backgroundVideoUrl,
+      background_image_src: backgroundImageSrc,
+      background_video_src: backgroundVideoSrc,
+      background_gradient: sanitizeChoice(settings.background_gradient, ALLOWED_GRADIENT_PRESETS, 'sunset'),
+      background_pattern: sanitizeChoice(settings.background_pattern, ALLOWED_PATTERN_PRESETS, 'none'),
+      link_layout: sanitizeChoice(settings.link_layout, ALLOWED_LINK_LAYOUTS, 'list'),
+      font_theme: sanitizeChoice(settings.font_theme, ALLOWED_FONT_THEMES, 'modern'),
+      button_style: sanitizeChoice(settings.button_style, ALLOWED_BUTTON_STYLES, 'rounded'),
+      animation_style: sanitizeChoice(settings.animation_style, ALLOWED_ANIMATION_STYLES, 'subtle'),
+      overlay_opacity: sanitizeNumberRange(settings.overlay_opacity, 0, 0.9, 0.55, 2),
+      background_blur: sanitizeNumberRange(settings.background_blur, 0, 20, 8, 1),
+      particles_density: sanitizeNumberRange(settings.particles_density, 20, 180, 80, 0),
+      particles_speed: sanitizeNumberRange(settings.particles_speed, 0.2, 3, 1, 2),
+      avatar_emoji: sanitizeEmoji(settings.avatar_emoji, '🙂'),
+      like_emoji: sanitizeEmoji(settings.like_emoji, '❤'),
+      share_emoji: sanitizeEmoji(settings.share_emoji, '🔗')
+    };
+  }
+
   async function seedDemoData() {
     if (!config.seedDemoData) return;
+
+    await run(
+      'INSERT INTO settings (`key`, value) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+      [
+        'background_mode',
+        'gradient',
+        'background_gradient',
+        'midnight',
+        'background_pattern',
+        'noise',
+        'link_layout',
+        'grid',
+        'font_theme',
+        'rounded',
+        'button_style',
+        'glass',
+        'animation_style',
+        'energetic'
+      ]
+    );
 
     const linksCount = await get('SELECT COUNT(*) AS c FROM links');
     if (!linksCount || Number(linksCount.c) === 0) {
@@ -465,16 +581,33 @@ function createApp(passedConfig) {
     const defaults = [
       ['site_title', 'LinkHub'],
       ['bg_youtube_id', ''],
+      ['background_mode', 'youtube'],
+      ['background_image_url', ''],
+      ['background_video_url', ''],
+      ['background_media_path', ''],
+      ['background_gradient', 'sunset'],
+      ['background_pattern', 'none'],
+      ['overlay_opacity', '0.55'],
+      ['background_blur', '8'],
+      ['particles_density', '80'],
+      ['particles_speed', '1'],
       ['footer_html', '<p>&copy; {{YEAR}} LinkHub</p>'],
       ['display_name', ''],
       ['handle', ''],
       ['bio', ''],
       ['avatar_path', ''],
+      ['avatar_emoji', '🙂'],
+      ['like_emoji', '❤'],
+      ['share_emoji', '🔗'],
       ['page_title', 'My LinkHub'],
       ['site_url', `https://${config.publicDomain}`],
       ['og_image', ''],
       ['og_description', ''],
-      ['theme_color', '#ff4d6d']
+      ['theme_color', '#ff4d6d'],
+      ['link_layout', 'list'],
+      ['font_theme', 'modern'],
+      ['button_style', 'rounded'],
+      ['animation_style', 'subtle']
     ];
 
     for (const [key, value] of defaults) {
@@ -516,7 +649,7 @@ function createApp(passedConfig) {
 
       const links = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const embeds = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
-      const settings = await getSettingsMap();
+      const settings = resolveUiSettings(await getSettingsMap());
 
       const year = new Date().getFullYear();
       const footerHtml = (settings.footer_html || '').replace(/\{\{YEAR\}\}/g, String(year));
@@ -624,7 +757,7 @@ function createApp(passedConfig) {
     requireAuth,
     asyncHandler(async (req, res) => {
       const links = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
-      const settings = await getSettingsMap();
+      const settings = resolveUiSettings(await getSettingsMap());
       const embeds = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
       const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
 
@@ -705,15 +838,31 @@ function createApp(passedConfig) {
       const allowedKeys = [
         'site_title',
         'bg_youtube_id',
+        'background_mode',
+        'background_image_url',
+        'background_video_url',
+        'background_gradient',
+        'background_pattern',
+        'overlay_opacity',
+        'background_blur',
+        'particles_density',
+        'particles_speed',
         'footer_html',
         'display_name',
         'handle',
         'bio',
+        'avatar_emoji',
+        'like_emoji',
+        'share_emoji',
         'page_title',
         'site_url',
         'og_image',
         'og_description',
-        'theme_color'
+        'theme_color',
+        'link_layout',
+        'font_theme',
+        'button_style',
+        'animation_style'
       ];
 
       const existingSettings = await getSettingsMap();
@@ -729,10 +878,40 @@ function createApp(passedConfig) {
           value = normalizeHttpUrl(value);
         } else if (key === 'og_image') {
           value = normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
+        } else if (key === 'background_image_url' || key === 'background_video_url') {
+          value = normalizeMediaAsset(value);
         } else if (key === 'theme_color') {
           value = sanitizeColorHex(value) || '#ff4d6d';
         } else if (key === 'bg_youtube_id') {
           value = String(value).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+        } else if (key === 'background_mode') {
+          value = sanitizeChoice(value, ALLOWED_BACKGROUND_MODES, 'youtube');
+        } else if (key === 'background_gradient') {
+          value = sanitizeChoice(value, ALLOWED_GRADIENT_PRESETS, 'sunset');
+        } else if (key === 'background_pattern') {
+          value = sanitizeChoice(value, ALLOWED_PATTERN_PRESETS, 'none');
+        } else if (key === 'link_layout') {
+          value = sanitizeChoice(value, ALLOWED_LINK_LAYOUTS, 'list');
+        } else if (key === 'font_theme') {
+          value = sanitizeChoice(value, ALLOWED_FONT_THEMES, 'modern');
+        } else if (key === 'button_style') {
+          value = sanitizeChoice(value, ALLOWED_BUTTON_STYLES, 'rounded');
+        } else if (key === 'animation_style') {
+          value = sanitizeChoice(value, ALLOWED_ANIMATION_STYLES, 'subtle');
+        } else if (key === 'overlay_opacity') {
+          value = String(sanitizeNumberRange(value, 0, 0.9, 0.55, 2));
+        } else if (key === 'background_blur') {
+          value = String(sanitizeNumberRange(value, 0, 20, 8, 1));
+        } else if (key === 'particles_density') {
+          value = String(sanitizeNumberRange(value, 20, 180, 80, 0));
+        } else if (key === 'particles_speed') {
+          value = String(sanitizeNumberRange(value, 0.2, 3, 1, 2));
+        } else if (key === 'avatar_emoji') {
+          value = sanitizeEmoji(value, '🙂');
+        } else if (key === 'like_emoji') {
+          value = sanitizeEmoji(value, '❤');
+        } else if (key === 'share_emoji') {
+          value = sanitizeEmoji(value, '🔗');
         } else {
           value = sanitizeText(value, 255);
         }
@@ -753,6 +932,14 @@ function createApp(passedConfig) {
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', ['og_image', rel]);
         if (existingSettings.og_image && existingSettings.og_image !== rel) {
           await deleteUploadIfLocal(existingSettings.og_image);
+        }
+      }
+
+      if (req.files?.background_media_file?.[0]) {
+        const rel = '/static/uploads/' + req.files.background_media_file[0].filename;
+        await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', ['background_media_path', rel]);
+        if (existingSettings.background_media_path && existingSettings.background_media_path !== rel) {
+          await deleteUploadIfLocal(existingSettings.background_media_path);
         }
       }
 
