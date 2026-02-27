@@ -24,6 +24,16 @@ const ALLOWED_EMBED_HOSTNAMES = [
   'tiktok.com',
   'open.spotify.com'
 ];
+const ALLOWED_EMBED_IFRAME_ALLOW_TOKENS = [
+  'accelerometer',
+  'autoplay',
+  'clipboard-write',
+  'encrypted-media',
+  'fullscreen',
+  'gyroscope',
+  'picture-in-picture',
+  'web-share'
+];
 const IMAGE_UPLOAD_MIME_EXT = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -204,19 +214,71 @@ function sanitizeFooterHtml(value) {
   });
 }
 
+function sanitizeIframeAllowAttr(value) {
+  if (!value) return '';
+  const tokens = String(value)
+    .split(';')
+    .map(item => item.trim().toLowerCase())
+    .filter(Boolean);
+  const unique = [];
+  for (const token of tokens) {
+    if (!ALLOWED_EMBED_IFRAME_ALLOW_TOKENS.includes(token)) continue;
+    if (!unique.includes(token)) unique.push(token);
+  }
+  return unique.join('; ');
+}
+
 function sanitizeEmbedHtml(value) {
-  return sanitizeHtml(String(value || ''), {
-    allowedTags: ['iframe', 'div', 'p', 'span', 'b', 'i', 'strong', 'em', 'a', 'br', 'small'],
+  const cleaned = sanitizeHtml(String(value || ''), {
+    allowedTags: ['iframe'],
     allowedAttributes: {
-      iframe: ['src', 'title', 'width', 'height', 'frameborder', 'allow', 'allowfullscreen', 'loading', 'referrerpolicy'],
-      a: ['href', 'target', 'rel']
+      iframe: ['src', 'title', 'width', 'height', 'allow', 'allowfullscreen']
     },
-    allowedSchemes: ['http', 'https', 'mailto'],
+    allowedSchemes: ['https'],
+    allowedSchemesByTag: { iframe: ['https'] },
     allowedIframeHostnames: ALLOWED_EMBED_HOSTNAMES,
+    enforceHtmlBoundary: true,
     transformTags: {
-      a: sanitizeHtml.simpleTransform('a', { rel: 'noopener noreferrer', target: '_blank' })
+      iframe: (tagName, attribs) => {
+        const src = normalizeHttpUrl(attribs.src);
+        if (!src) return { tagName: 'iframe', attribs: {} };
+
+        let hostname = '';
+        try {
+          const parsed = new URL(src);
+          if (parsed.protocol !== 'https:') return { tagName: 'iframe', attribs: {} };
+          hostname = parsed.hostname.toLowerCase();
+        } catch {
+          return { tagName: 'iframe', attribs: {} };
+        }
+
+        if (!ALLOWED_EMBED_HOSTNAMES.includes(hostname)) {
+          return { tagName: 'iframe', attribs: {} };
+        }
+
+        const safeAttrs = {
+          src,
+          title: sanitizeText(attribs.title || 'Embedded content', 140),
+          loading: 'lazy',
+          referrerpolicy: 'strict-origin-when-cross-origin',
+          allowfullscreen: 'allowfullscreen'
+        };
+
+        const width = Number.parseInt(attribs.width || '', 10);
+        const height = Number.parseInt(attribs.height || '', 10);
+        if (Number.isFinite(width)) safeAttrs.width = String(Math.max(200, Math.min(1920, width)));
+        if (Number.isFinite(height)) safeAttrs.height = String(Math.max(120, Math.min(1080, height)));
+
+        const allow = sanitizeIframeAllowAttr(attribs.allow);
+        if (allow) safeAttrs.allow = allow;
+
+        return { tagName: 'iframe', attribs: safeAttrs };
+      }
     }
   });
+
+  const firstIframeWithSrc = cleaned.match(/<iframe\b[^>]*\bsrc=(["'])https:\/\/[^"']+\1[^>]*><\/iframe>/i);
+  return firstIframeWithSrc ? firstIframeWithSrc[0] : '';
 }
 
 function safeJsonForAttr(value) {
@@ -654,7 +716,10 @@ function createApp(passedConfig) {
       await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
 
       const links = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
-      const embeds = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const embedsRaw = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const embeds = embedsRaw
+        .map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }))
+        .filter(embed => embed.embed_html);
       const settings = resolveUiSettings(await getSettingsMap());
 
       const year = new Date().getFullYear();
@@ -764,7 +829,8 @@ function createApp(passedConfig) {
     asyncHandler(async (req, res) => {
       const links = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
       const settings = resolveUiSettings(await getSettingsMap());
-      const embeds = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
+      const embedsRaw = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
+      const embeds = embedsRaw.map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }));
       const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
 
       const socialsDir = path.join(__dirname, 'public', 'images', 'socials');
@@ -1307,5 +1373,6 @@ module.exports = {
   startServer,
   sanitizeSlug,
   sanitizeColorHex,
-  normalizeHttpUrl
+  normalizeHttpUrl,
+  sanitizeEmbedHtml
 };

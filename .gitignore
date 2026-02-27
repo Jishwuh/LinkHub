@@ -13,3 +13,4 @@ coverage/
 Thumbs.db
 public/uploads/*
 !public/uploads/.gitkeep
+test/validation.test.cjs

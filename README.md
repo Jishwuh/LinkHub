@@ -7,11 +7,35 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Secure admin login with hashed passwords (`bcrypt`)
 - Link management (ordering, visibility, icons, custom color)
 - Redirect management (`/slug -> target URL`)
-- Custom embed blocks (sanitized iframe HTML)
+- Custom embed blocks (strictly sanitized iframe HTML)
 - Visit and like counters
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
 - CI workflow with syntax checks and tests
+
+## Recent Updates
+
+- Admin dashboard redesign:
+  - Cleaner layout and less visual clutter
+  - Section tabs with better spacing and readability
+  - Context tooltips for advanced controls
+- No-refresh admin workflow:
+  - Settings save via AJAX with toast confirmation
+  - Link/Embed/Redirect create, edit, delete, toggle, and reorder without page reload
+- Modal-based editing:
+  - Replaced inline create/edit fields with `Create New` + `Edit` modals
+  - Consistent modal UX for Links, Embeds, and Redirects
+- Better list management UX:
+  - Drag-and-drop reordering for links and embeds
+  - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
+  - Per-item order badges and clearer visibility state
+- Color picker and swatch improvements:
+  - Profile theme color now has live swatch preview
+  - Link color fields include swatch preview + hover hex visibility
+- Background customization fixes:
+  - Pattern overlay visibility improved
+  - Background-mode fields now show only relevant controls
+  - Modal overlay hidden-state fix (`[hidden]`) to prevent blocking clicks on admin load
 
 ## Customization Studio
 
@@ -160,7 +184,14 @@ npm start
 - File uploads are restricted by field:
   - Avatar / OG: PNG, JPG, WEBP, GIF
   - Background media: PNG, JPG, WEBP, GIF, MP4, WEBM, OGG
-- Rich text and embeds are sanitized before storage.
+- Rich text is sanitized before storage.
+- Embeds are hardened with strict server-side sanitization:
+  - Only `iframe` embeds are allowed
+  - Only `https` iframe sources are allowed
+  - Iframe hostnames are restricted to an allowlist:
+    - `youtube.com`, `youtube-nocookie.com`, `player.twitch.tv`, `tiktok.com`, `open.spotify.com`
+  - Iframe `allow` permissions are filtered to a safe subset
+  - Legacy/stored embed HTML is sanitized again before render (defense in depth)
 - Session-backed CSRF token is required on admin writes.
 - `TRUST_PROXY` should match your deployment topology.
 
