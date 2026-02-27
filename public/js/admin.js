@@ -405,6 +405,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleEl = $('#link-modal-title-input');
     const urlEl = $('#link-modal-url');
     const iconEl = $('#link-modal-icon');
+    const iconPreviewImgEl = $('#link-modal-icon-preview-image');
+    const iconPreviewFallbackEl = $('#link-modal-icon-preview-fallback');
+    const iconPreviewLabelEl = $('#link-modal-icon-preview-label');
     const colorEl = $('#link-modal-color');
     const colorPreviewEl = $('#link-modal-color-preview');
     const visibleEl = $('#link-modal-visible');
@@ -412,6 +415,45 @@ document.addEventListener('DOMContentLoaded', () => {
     let dragArmedId = null;
 
     const syncModalColor = () => applyColorChip(colorPreviewEl, colorEl?.value);
+    const knownIconValues = () => new Set(Array.from(iconEl.options).map(option => option.value));
+
+    const ensureIconOption = value => {
+      const key = String(value || '').trim();
+      if (!key) return;
+      if (knownIconValues().has(key)) return;
+      const option = document.createElement('option');
+      option.value = key;
+      option.textContent = key;
+      iconEl.appendChild(option);
+    };
+
+    const syncIconPreview = () => {
+      const key = String(iconEl.value || '').trim();
+      if (!key) {
+        if (iconPreviewImgEl) {
+          iconPreviewImgEl.hidden = true;
+          iconPreviewImgEl.removeAttribute('src');
+        }
+        if (iconPreviewFallbackEl) {
+          iconPreviewFallbackEl.hidden = false;
+          iconPreviewFallbackEl.textContent = '?';
+        }
+        if (iconPreviewLabelEl) iconPreviewLabelEl.textContent = 'No icon selected';
+        return;
+      }
+
+      if (iconPreviewImgEl) {
+        iconPreviewImgEl.hidden = false;
+        iconPreviewImgEl.src = `/static/images/socials/${encodeURIComponent(key)}.svg`;
+        iconPreviewImgEl.alt = `${key} icon preview`;
+      }
+
+      if (iconPreviewFallbackEl) {
+        iconPreviewFallbackEl.hidden = true;
+      }
+
+      if (iconPreviewLabelEl) iconPreviewLabelEl.textContent = key;
+    };
 
     const syncOrderBadges = () => {
       $$('.link-admin-item', list).forEach((item, idx) => {
@@ -501,6 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
       colorEl.value = '#2a2a2a';
       visibleEl.checked = true;
       syncModalColor();
+      syncIconPreview();
       modal.open('link');
       titleEl.focus();
     };
@@ -510,10 +553,12 @@ document.addEventListener('DOMContentLoaded', () => {
       idEl.value = item.dataset.id || '';
       titleEl.value = item.dataset.title || '';
       urlEl.value = item.dataset.url || '';
+      ensureIconOption(item.dataset.icon || '');
       iconEl.value = item.dataset.icon || '';
       colorEl.value = normalizeHex(item.dataset.color, '#2a2a2a');
       visibleEl.checked = item.dataset.visible !== '0';
       syncModalColor();
+      syncIconPreview();
       modal.open('link');
       titleEl.focus();
     };
@@ -663,12 +708,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
     colorEl?.addEventListener('input', syncModalColor);
     colorEl?.addEventListener('change', syncModalColor);
+    iconEl?.addEventListener('change', syncIconPreview);
+    iconPreviewImgEl?.addEventListener('error', () => {
+      if (iconPreviewImgEl) {
+        iconPreviewImgEl.hidden = true;
+        iconPreviewImgEl.removeAttribute('src');
+      }
+      if (iconPreviewFallbackEl) {
+        iconPreviewFallbackEl.hidden = false;
+        iconPreviewFallbackEl.textContent = '!';
+      }
+      if (iconPreviewLabelEl) {
+        iconPreviewLabelEl.textContent = `Icon not found: ${String(iconEl?.value || '').trim()}`;
+      }
+    });
 
     $$('.color-chip', list).forEach(chip => {
       applyColorChip(chip, chip.dataset.color);
     });
     syncOrderBadges();
     syncModalColor();
+    syncIconPreview();
   }
 
   function setupEmbedsManager(modal) {

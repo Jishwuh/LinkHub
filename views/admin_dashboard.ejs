@@ -396,24 +396,44 @@
         </div>
         <form id="link-modal-form" class="modal-form">
           <input type="hidden" name="id" id="link-modal-id">
-          <label>Title<input name="title" id="link-modal-title-input" required></label>
-          <label>URL<input name="url" id="link-modal-url" type="url" required></label>
-          <label>Icon key
-            <select name="icon_key" id="link-modal-icon">
-              <option value="">(none)</option>
-              <% icons.forEach(i => { %>
-                <option value="<%= i %>"><%= i %></option>
-              <% }) %>
-            </select>
-          </label>
-          <label>
-            Button color
-            <div class="inline-color-picker">
-              <input name="color_hex" id="link-modal-color" class="color-input" type="color" value="#2a2a2a">
-              <span id="link-modal-color-preview" class="color-chip color-chip-lg" title="#2a2a2a"></span>
+          <div class="modal-grid modal-grid-2">
+            <label class="modal-field">
+              <span class="modal-label">Title</span>
+              <input name="title" id="link-modal-title-input" required>
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">URL</span>
+              <input name="url" id="link-modal-url" type="url" required>
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Icon key</span>
+              <select name="icon_key" id="link-modal-icon">
+                <option value="">(none)</option>
+                <% icons.forEach(i => { %>
+                  <option value="<%= i %>"><%= i %></option>
+                <% }) %>
+              </select>
+            </label>
+            <div id="link-modal-icon-preview" class="icon-key-preview" aria-live="polite">
+              <div class="icon-key-preview-chip">
+                <img id="link-modal-icon-preview-image" src="" alt="" hidden>
+                <span id="link-modal-icon-preview-fallback" class="icon-key-preview-fallback">?</span>
+              </div>
+              <div class="icon-key-preview-meta">
+                <div class="icon-key-preview-title">Icon Preview</div>
+                <div id="link-modal-icon-preview-label" class="icon-key-preview-label">No icon selected</div>
+              </div>
             </div>
-          </label>
-          <label class="checkbox"><input type="checkbox" name="is_visible" id="link-modal-visible" checked> Visible</label>
+            <label class="modal-field">
+              <span class="modal-label">Button color</span>
+              <div class="inline-color-picker">
+                <input name="color_hex" id="link-modal-color" class="color-input" type="color" value="#2a2a2a">
+                <span id="link-modal-color-preview" class="color-chip color-chip-lg" title="#2a2a2a"></span>
+              </div>
+            </label>
+          </div>
+          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="link-modal-visible" checked> Visible</label>
+          <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
           <div class="modal-actions">
             <button type="submit">Save Link</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
@@ -428,9 +448,16 @@
         </div>
         <form id="embed-modal-form" class="modal-form">
           <input type="hidden" name="id" id="embed-modal-id">
-          <label>Title<input name="title" id="embed-modal-title-input" required></label>
-          <label>Embed HTML<textarea name="embed_html" id="embed-modal-html" rows="6" required></textarea></label>
-          <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-modal-visible" checked> Visible</label>
+          <label class="modal-field">
+            <span class="modal-label">Title</span>
+            <input name="title" id="embed-modal-title-input" required>
+          </label>
+          <label class="modal-field">
+            <span class="modal-label">Embed HTML</span>
+            <textarea name="embed_html" id="embed-modal-html" rows="6" required></textarea>
+          </label>
+          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="embed-modal-visible" checked> Visible</label>
+          <p class="modal-hint">Only trusted HTTPS iframe embeds are allowed (YouTube, Twitch, TikTok, Spotify).</p>
           <div class="modal-actions">
             <button type="submit">Save Embed</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
@@ -445,9 +472,18 @@
         </div>
         <form id="redirect-modal-form" class="modal-form">
           <input type="hidden" name="id" id="redirect-modal-id">
-          <label>Slug<input name="slug" id="redirect-modal-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required></label>
-          <label>Target URL<input name="target_url" id="redirect-modal-url" type="url" placeholder="https://..." required></label>
-          <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-modal-active" checked> Active</label>
+          <div class="modal-grid modal-grid-2">
+            <label class="modal-field">
+              <span class="modal-label">Slug</span>
+              <input name="slug" id="redirect-modal-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required>
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Target URL</span>
+              <input name="target_url" id="redirect-modal-url" type="url" placeholder="https://..." required>
+            </label>
+          </div>
+          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_active" id="redirect-modal-active" checked> Active</label>
+          <p class="modal-hint">Slugs are lowercase and become available at <code>/your-slug</code>.</p>
           <div class="modal-actions">
             <button type="submit">Save Redirect</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>

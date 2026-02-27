@@ -1006,9 +1006,9 @@ button,
 .modal-card {
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.16);
-  background: #101113;
+  background: linear-gradient(160deg, rgba(16, 17, 19, 0.98), rgba(11, 13, 16, 0.98));
   box-shadow: 0 28px 46px rgba(0, 0, 0, 0.45);
-  padding: 14px;
+  padding: 16px;
 }
 
 .modal-header {
@@ -1016,27 +1016,129 @@ button,
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 
 .modal-header h3 {
   margin: 0;
+  font-size: 1.55rem;
 }
 
-.modal-form label {
-  margin: 8px 0;
+.modal-form {
+  display: grid;
+  gap: 10px;
+}
+
+.modal-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.modal-grid-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.modal-field {
+  display: grid;
+  gap: 6px;
+}
+
+.modal-label {
+  font-size: 0.86rem;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 600;
+}
+
+.modal-form input,
+.modal-form textarea,
+.modal-form select {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.modal-form input:focus,
+.modal-form textarea:focus,
+.modal-form select:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, white 15%);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.modal-form select option {
+  color: #111;
 }
 
 .modal-form textarea {
-  min-height: 150px;
+  min-height: 170px;
   resize: vertical;
+  font-family: 'Cascadia Mono', 'Fira Code', Consolas, 'Courier New', monospace;
+  font-size: 0.9rem;
+}
+
+.modal-checkbox {
+  margin-top: 2px;
+  color: #f0f0f0;
+}
+
+.modal-hint {
+  margin: 0;
+  font-size: 0.83rem;
+  color: var(--muted);
+}
+
+.icon-key-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 10px;
+}
+
+.icon-key-preview-chip {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.25);
+  display: grid;
+  place-items: center;
+}
+
+.icon-key-preview-chip img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+}
+
+.icon-key-preview-fallback {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #d2d2d2;
+}
+
+.icon-key-preview-title {
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.icon-key-preview-label {
+  font-size: 0.84rem;
+  color: #fff;
 }
 
 .modal-actions {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 10px;
+  margin-top: 8px;
 }
 
 body.modal-open {
@@ -1302,6 +1404,10 @@ body.modal-open {
   .settings-header {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .modal-grid-2 {
+    grid-template-columns: 1fr;
   }
 
   .settings-save {
