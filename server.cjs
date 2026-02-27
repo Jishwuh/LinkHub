@@ -286,10 +286,16 @@ function createApp(passedConfig) {
   const run = async (sql, params = []) => {
     await pool.query(sql, params);
   };
+  const runResult = async (sql, params = []) => (await pool.query(sql, params))[0];
   const q = async (sql, params = []) => (await pool.query(sql, params))[0];
   const get = async (sql, params = []) => {
     const rows = await q(sql, params);
     return rows[0] || null;
+  };
+  const wantsJson = req => {
+    const accept = String(req.get('accept') || '').toLowerCase();
+    const requestedWith = String(req.get('x-requested-with') || '').toLowerCase();
+    return requestedWith === 'fetch' || accept.includes('application/json');
   };
 
   const MySQLStoreFactory = require('express-mysql-session');
@@ -798,13 +804,14 @@ function createApp(passedConfig) {
 
       if (!title || !targetUrl) return res.status(400).send('Title and valid URL are required');
 
+      let linkId = id;
       if (id > 0) {
         await run(
           'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ? WHERE id = ?',
           [title, targetUrl, iconKey, order, visible, colorHex, id]
         );
       } else {
-        await run('INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex) VALUES (?, ?, ?, ?, ?, ?)', [
+        const insertResult = await runResult('INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex) VALUES (?, ?, ?, ?, ?, ?)', [
           title,
           targetUrl,
           iconKey,
@@ -812,8 +819,13 @@ function createApp(passedConfig) {
           visible,
           colorHex
         ]);
+        linkId = Number(insertResult.insertId || 0);
       }
 
+      const link = linkId > 0 ? await get('SELECT * FROM links WHERE id = ?', [linkId]) : null;
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Link saved', link });
+      }
       return res.redirect('/admin');
     })
   );
@@ -825,7 +837,68 @@ function createApp(passedConfig) {
     asyncHandler(async (req, res) => {
       const id = Number(req.body?.id || 0);
       if (id > 0) await run('DELETE FROM links WHERE id = ?', [id]);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Link deleted', id });
+      }
       res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/link/toggle',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (id <= 0) return res.status(400).send('Invalid link id');
+
+      const current = await get('SELECT id, is_visible FROM links WHERE id = ?', [id]);
+      if (!current) return res.status(404).send('Link not found');
+
+      const requested = req.body?.is_visible;
+      const nextVisible =
+        requested == null
+          ? current.is_visible ? 0 : 1
+          : String(requested).trim() === '1' || String(requested).trim().toLowerCase() === 'true'
+            ? 1
+            : 0;
+
+      await run('UPDATE links SET is_visible = ? WHERE id = ?', [nextVisible, id]);
+      const link = await get('SELECT * FROM links WHERE id = ?', [id]);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: nextVisible ? 'Link is visible' : 'Link is hidden', link });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/link/reorder',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      let ids = req.body?.ids;
+      if (typeof ids === 'string') ids = [ids];
+      if (!Array.isArray(ids)) ids = [];
+
+      const cleanIds = [];
+      for (const value of ids) {
+        const parsed = Number(value);
+        if (Number.isInteger(parsed) && parsed > 0 && !cleanIds.includes(parsed)) {
+          cleanIds.push(parsed);
+        }
+      }
+
+      if (!cleanIds.length) return res.status(400).send('No valid link ids supplied');
+
+      for (let i = 0; i < cleanIds.length; i += 1) {
+        await run('UPDATE links SET order_index = ? WHERE id = ?', [i + 1, cleanIds[i]]);
+      }
+
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Link order saved', ids: cleanIds });
+      }
+      return res.redirect('/admin');
     })
   );
 
@@ -943,6 +1016,9 @@ function createApp(passedConfig) {
         }
       }
 
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Changes have been saved' });
+      }
       res.redirect('/admin');
     })
   );
@@ -960,6 +1036,7 @@ function createApp(passedConfig) {
 
       if (!title || !embedHtml) return res.status(400).send('Title and valid embed HTML are required');
 
+      let embedId = id;
       if (id > 0) {
         await run('UPDATE embeds SET title = ?, embed_html = ?, order_index = ?, is_visible = ? WHERE id = ?', [
           title,
@@ -969,10 +1046,20 @@ function createApp(passedConfig) {
           id
         ]);
       } else {
-        await run('INSERT INTO embeds (title, embed_html, order_index, is_visible) VALUES (?, ?, ?, ?)', [title, embedHtml, order, visible]);
+        const insertResult = await runResult('INSERT INTO embeds (title, embed_html, order_index, is_visible) VALUES (?, ?, ?, ?)', [
+          title,
+          embedHtml,
+          order,
+          visible
+        ]);
+        embedId = Number(insertResult.insertId || 0);
       }
 
-      res.redirect('/admin');
+      const embed = embedId > 0 ? await get('SELECT * FROM embeds WHERE id = ?', [embedId]) : null;
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Embed saved', embed });
+      }
+      return res.redirect('/admin');
     })
   );
 
@@ -983,7 +1070,68 @@ function createApp(passedConfig) {
     asyncHandler(async (req, res) => {
       const id = Number(req.body?.id || 0);
       if (id > 0) await run('DELETE FROM embeds WHERE id = ?', [id]);
-      res.redirect('/admin');
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Embed deleted', id });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/embed/toggle',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (id <= 0) return res.status(400).send('Invalid embed id');
+
+      const current = await get('SELECT id, is_visible FROM embeds WHERE id = ?', [id]);
+      if (!current) return res.status(404).send('Embed not found');
+
+      const requested = req.body?.is_visible;
+      const nextVisible =
+        requested == null
+          ? current.is_visible ? 0 : 1
+          : String(requested).trim() === '1' || String(requested).trim().toLowerCase() === 'true'
+            ? 1
+            : 0;
+
+      await run('UPDATE embeds SET is_visible = ? WHERE id = ?', [nextVisible, id]);
+      const embed = await get('SELECT * FROM embeds WHERE id = ?', [id]);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: nextVisible ? 'Embed is visible' : 'Embed is hidden', embed });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/embed/reorder',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      let ids = req.body?.ids;
+      if (typeof ids === 'string') ids = [ids];
+      if (!Array.isArray(ids)) ids = [];
+
+      const cleanIds = [];
+      for (const value of ids) {
+        const parsed = Number(value);
+        if (Number.isInteger(parsed) && parsed > 0 && !cleanIds.includes(parsed)) {
+          cleanIds.push(parsed);
+        }
+      }
+
+      if (!cleanIds.length) return res.status(400).send('No valid embed ids supplied');
+
+      for (let i = 0; i < cleanIds.length; i += 1) {
+        await run('UPDATE embeds SET order_index = ? WHERE id = ?', [i + 1, cleanIds[i]]);
+      }
+
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Embed order saved', ids: cleanIds });
+      }
+      return res.redirect('/admin');
     })
   );
 
@@ -999,13 +1147,28 @@ function createApp(passedConfig) {
 
       if (!slug || !targetUrl) return res.status(400).send('Valid slug and target URL are required');
 
+      let redirectId = id;
       if (id > 0) {
         await run('UPDATE redirects SET slug = ?, target_url = ?, is_active = ? WHERE id = ?', [slug, targetUrl, isActive, id]);
       } else {
-        await run('INSERT INTO redirects (slug, target_url, is_active) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active)', [slug, targetUrl, isActive]);
+        const insertResult = await runResult(
+          'INSERT INTO redirects (slug, target_url, is_active) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active)',
+          [slug, targetUrl, isActive]
+        );
+
+        if (insertResult.insertId) {
+          redirectId = Number(insertResult.insertId);
+        } else {
+          const existing = await get('SELECT id FROM redirects WHERE slug = ?', [slug]);
+          redirectId = Number(existing?.id || 0);
+        }
       }
 
-      res.redirect('/admin');
+      const redirect = redirectId > 0 ? await get('SELECT * FROM redirects WHERE id = ?', [redirectId]) : null;
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Redirect saved', redirect });
+      }
+      return res.redirect('/admin');
     })
   );
 
@@ -1016,7 +1179,38 @@ function createApp(passedConfig) {
     asyncHandler(async (req, res) => {
       const id = Number(req.body?.id || 0);
       if (id > 0) await run('DELETE FROM redirects WHERE id = ?', [id]);
-      res.redirect('/admin');
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Redirect deleted', id });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/redirect/toggle',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (id <= 0) return res.status(400).send('Invalid redirect id');
+
+      const current = await get('SELECT id, is_active FROM redirects WHERE id = ?', [id]);
+      if (!current) return res.status(404).send('Redirect not found');
+
+      const requested = req.body?.is_active;
+      const nextActive =
+        requested == null
+          ? current.is_active ? 0 : 1
+          : String(requested).trim() === '1' || String(requested).trim().toLowerCase() === 'true'
+            ? 1
+            : 0;
+
+      await run('UPDATE redirects SET is_active = ? WHERE id = ?', [nextActive, id]);
+      const redirect = await get('SELECT * FROM redirects WHERE id = ?', [id]);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: nextActive ? 'Redirect is active' : 'Redirect is inactive', redirect });
+      }
+      return res.redirect('/admin');
     })
   );
 
@@ -1061,6 +1255,10 @@ function createApp(passedConfig) {
     console.error('Unhandled error:', err);
 
     if (req.path.startsWith('/api/')) {
+      return res.status(500).json({ error: 'Internal Server Error' });
+    }
+
+    if (wantsJson(req)) {
       return res.status(500).json({ error: 'Internal Server Error' });
     }
 

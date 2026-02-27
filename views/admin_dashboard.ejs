@@ -10,6 +10,8 @@
 
 <body class="admin">
   <div class="container">
+    <input type="hidden" id="csrf-token" value="<%= csrfToken %>">
+
     <div class="admin-topbar">
       <h1>Admin Dashboard</h1>
       <form method="POST" action="/admin/logout" class="inline-form">
@@ -17,6 +19,8 @@
         <button class="btn-secondary" type="submit">Log out</button>
       </form>
     </div>
+
+    <div id="admin-toast" class="admin-toast" role="status" aria-live="polite"></div>
 
     <form class="form form-wide settings-shell" id="settings-form" method="POST" action="/admin/settings" enctype="multipart/form-data">
       <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -44,7 +48,13 @@
               <label>Site title<input name="site_title" value="<%= settings.site_title || '' %>"></label>
               <label>Handle<input name="handle" value="<%= settings.handle || '' %>"></label>
               <label>Display name<input name="display_name" value="<%= settings.display_name || '' %>"></label>
-              <label>Theme color<input name="theme_color" type="color" value="<%= settings.theme_color || '#ff4d6d' %>"></label>
+              <label>
+                Theme color
+                <div class="inline-color-picker">
+                  <input name="theme_color" id="theme-color" class="color-input" type="color" value="<%= settings.theme_color || '#ff4d6d' %>">
+                  <span id="theme-color-preview" class="color-chip color-chip-lg" title="<%= settings.theme_color || '#ff4d6d' %>"></span>
+                </div>
+              </label>
             </div>
             <label>Bio<textarea name="bio" rows="4"><%= settings.bio || '' %></textarea></label>
 
@@ -78,44 +88,22 @@
                 </span>
                 <input name="bg_youtube_id" value="<%= settings.bg_youtube_id || '' %>" placeholder="dQw4w9WgXcQ">
               </label>
-              <label>
-                <span class="label-with-tip">Blur strength px
-                  <span class="field-tip" tabindex="0" data-tip="Higher blur softens the moving video so text stays readable.">?</span>
-                </span>
-                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
-              </label>
             </div>
 
             <div class="grid bg-mode-group" data-bg-visible="image">
               <label>Background image URL<input name="background_image_url" type="url" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg"></label>
-              <label>Upload image<input type="file" name="background_media_file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
-              <label>
-                <span class="label-with-tip">Pattern overlay
-                  <span class="field-tip" tabindex="0" data-tip="Adds subtle texture on top of your image.">?</span>
-                </span>
-                <select name="background_pattern">
-                  <option value="none" <%= settings.background_pattern === 'none' ? 'selected' : '' %>>None</option>
-                  <option value="grid" <%= settings.background_pattern === 'grid' ? 'selected' : '' %>>Grid</option>
-                  <option value="dots" <%= settings.background_pattern === 'dots' ? 'selected' : '' %>>Dots</option>
-                  <option value="noise" <%= settings.background_pattern === 'noise' ? 'selected' : '' %>>Noise</option>
-                </select>
-              </label>
-              <label>
-                <span class="label-with-tip">Blur strength px
-                  <span class="field-tip" tabindex="0" data-tip="Use small values to keep image detail visible.">?</span>
-                </span>
-                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
-              </label>
             </div>
 
             <div class="grid bg-mode-group" data-bg-visible="video">
               <label>Background video URL<input name="background_video_url" type="url" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4"></label>
-              <label>Upload video<input type="file" name="background_media_file" accept="video/mp4,video/webm,video/ogg"></label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="image,video">
               <label>
-                <span class="label-with-tip">Blur strength px
-                  <span class="field-tip" tabindex="0" data-tip="Softens motion-heavy videos behind your content.">?</span>
+                <span class="label-with-tip">Upload media
+                  <span class="field-tip" tabindex="0" data-tip="Image mode accepts image files. Video mode accepts video files.">?</span>
                 </span>
-                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
+                <input type="file" name="background_media_file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/ogg">
               </label>
             </div>
 
@@ -132,9 +120,12 @@
                   <option value="midnight" <%= settings.background_gradient === 'midnight' ? 'selected' : '' %>>Midnight</option>
                 </select>
               </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="image,gradient">
               <label>
                 <span class="label-with-tip">Pattern overlay
-                  <span class="field-tip" tabindex="0" data-tip="Texture layer over the gradient.">?</span>
+                  <span class="field-tip" tabindex="0" data-tip="Adds subtle texture over image or gradient backgrounds.">?</span>
                 </span>
                 <select name="background_pattern">
                   <option value="none" <%= settings.background_pattern === 'none' ? 'selected' : '' %>>None</option>
@@ -142,6 +133,15 @@
                   <option value="dots" <%= settings.background_pattern === 'dots' ? 'selected' : '' %>>Dots</option>
                   <option value="noise" <%= settings.background_pattern === 'noise' ? 'selected' : '' %>>Noise</option>
                 </select>
+              </label>
+            </div>
+
+            <div class="grid bg-mode-group" data-bg-visible="youtube,image,video">
+              <label>
+                <span class="label-with-tip">Blur strength px
+                  <span class="field-tip" tabindex="0" data-tip="Softens media backgrounds for better readability.">?</span>
+                </span>
+                <input name="background_blur" type="number" min="0" max="20" step="0.5" value="<%= settings.background_blur %>">
               </label>
             </div>
 
@@ -277,176 +277,186 @@
     </form>
 
     <details class="admin-accordion" open>
-      <summary>Links</summary>
+      <summary>
+        <span>Links</span>
+        <button type="button" class="btn-secondary create-new-btn" id="link-create-btn">Create New</button>
+      </summary>
       <section class="card section-card">
-        <form id="link-form" class="form form-wide" method="POST" action="/admin/link">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <input type="hidden" name="id" id="link-id">
-          <div class="grid">
-            <label>Title<input name="title" id="link-title" required></label>
-            <label>URL<input name="url" id="link-url" type="url" required></label>
-            <label>Icon key
-              <select name="icon_key" id="link-icon">
-                <option value="">(none)</option>
-                <% icons.forEach(i => { %>
-                  <option value="<%= i %>"><%= i %></option>
-                  <% }) %>
-              </select>
-            </label>
-            <label>Button color<input name="color_hex" id="link-color" type="color" value="#2a2a2a"></label>
-            <label>Order<input name="order_index" id="link-order" type="number" value="0"></label>
-            <label class="checkbox"><input type="checkbox" name="is_visible" id="link-visible" checked> Visible</label>
-          </div>
-          <div class="actions">
-            <button id="link-submit" type="submit">Add Link</button>
-            <button id="link-cancel" type="button" class="btn-secondary hidden">Cancel</button>
-          </div>
-        </form>
-
-        <div class="table">
-          <div class="row head">
-            <div>ID</div>
-            <div>Title</div>
-            <div>URL</div>
-            <div>Icon</div>
-            <div>Color</div>
-            <div>Order</div>
-            <div>Visible</div>
-            <div>Actions</div>
-          </div>
-          <% links.forEach(l => { %>
-            <div class="row">
-              <div><%= l.id %></div>
-              <div><%= l.title %></div>
-              <div><a href="<%= l.url %>" target="_blank" rel="noopener noreferrer"><%= l.url %></a></div>
-              <div><%= l.icon_key || '' %></div>
-              <div><%= l.color_hex || '' %></div>
-              <div><%= l.order_index %></div>
-              <div><%= l.is_visible ? 'Yes' : 'No' %></div>
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-secondary btn-edit"
-                  data-id="<%= l.id %>"
-                  data-title="<%= l.title %>"
-                  data-url="<%= l.url %>"
-                  data-icon="<%= l.icon_key || '' %>"
-                  data-color="<%= l.color_hex || '' %>"
-                  data-order="<%= l.order_index %>"
-                  data-visible="<%= l.is_visible ? '1' : '0' %>">Edit</button>
-                <form method="POST" action="/admin/link/delete" class="confirm-delete-form" data-label="link #<%= l.id %>">
-                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                  <input type="hidden" name="id" value="<%= l.id %>">
-                  <button class="btn-danger" type="submit">Delete</button>
-                </form>
+        <div class="links-help muted">Drag using the handle to reorder. Hover color chips to view exact hex.</div>
+        <div id="links-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
+          <% links.forEach((l, idx) => { %>
+            <article
+              class="link-admin-item <%= l.is_visible ? '' : 'is-hidden-link' %>"
+              draggable="true"
+              data-id="<%= l.id %>"
+              data-title="<%= l.title %>"
+              data-url="<%= l.url %>"
+              data-icon="<%= l.icon_key || '' %>"
+              data-color="<%= l.color_hex || '' %>"
+              data-order="<%= l.order_index %>"
+              data-visible="<%= l.is_visible ? '1' : '0' %>">
+              <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
+              <div class="link-admin-main">
+                <div class="link-admin-title"><%= l.title %></div>
+                <a class="link-admin-url" href="<%= l.url %>" target="_blank" rel="noopener noreferrer"><%= l.url %></a>
               </div>
-            </div>
-            <% }) %>
+              <div class="link-admin-meta">
+                <span class="order-badge" title="Order">#<%= idx + 1 %></span>
+                <% if (l.icon_key) { %><span class="link-pill" title="Icon key"><%= l.icon_key %></span><% } else { %><span class="link-pill" hidden></span><% } %>
+                <span class="color-chip" data-color="<%= l.color_hex || '' %>" title="<%= l.color_hex || '#2a2a2a' %>"></span>
+              </div>
+              <div class="link-admin-actions">
+                <button type="button" class="icon-action" data-action="edit" title="Edit link">Edit</button>
+                <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= l.is_visible ? 'Hide' : 'Show' %></button>
+                <button type="button" class="icon-action danger" data-action="delete" title="Delete link">Del</button>
+              </div>
+            </article>
+          <% }) %>
         </div>
       </section>
     </details>
 
     <details class="admin-accordion">
-      <summary>Custom Embeds</summary>
+      <summary>
+        <span>Custom Embeds</span>
+        <button type="button" class="btn-secondary create-new-btn" id="embed-create-btn">Create New</button>
+      </summary>
       <section class="card section-card">
-        <form class="form form-wide" method="POST" action="/admin/embed">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <input type="hidden" id="embed-id" name="id">
-          <label>Title<input name="title" id="embed-title" required></label>
-          <label>Embed HTML<textarea name="embed_html" id="embed-html" rows="4" required></textarea></label>
-          <div class="grid">
-            <label>Order<input name="order_index" id="embed-order" type="number" value="0"></label>
-            <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-visible" checked> Visible</label>
-          </div>
-          <div class="actions">
-            <button type="submit">Save Embed</button>
-          </div>
-        </form>
-        <div class="table">
-          <div class="row head row-embed-head">
-            <div>ID</div>
-            <div>Title</div>
-            <div>Order</div>
-            <div>Visible</div>
-            <div>Actions</div>
-          </div>
-          <% embeds.forEach(e => { %>
-            <div class="row row-embed">
-              <div><%= e.id %></div>
-              <div><%= e.title %></div>
-              <div><%= e.order_index %></div>
-              <div><%= e.is_visible ? 'Yes' : 'No' %></div>
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-secondary btn-embed-edit"
-                  data-id="<%= e.id %>"
-                  data-title="<%= e.title %>"
-                  data-order="<%= e.order_index %>"
-                  data-visible="<%= e.is_visible ? '1' : '0' %>"
-                  data-html="<%= safeJsonForAttr(e.embed_html) %>">Edit</button>
-                <form method="POST" action="/admin/embed/delete" class="confirm-delete-form" data-label="embed #<%= e.id %>">
-                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                  <input type="hidden" name="id" value="<%= e.id %>">
-                  <button class="btn-danger" type="submit">Delete</button>
-                </form>
+        <div class="links-help muted">Drag to reorder embeds. Toggle visibility without leaving this view.</div>
+        <div id="embeds-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
+          <% embeds.forEach((e, idx) => { %>
+            <article
+              class="link-admin-item <%= e.is_visible ? '' : 'is-hidden-link' %>"
+              draggable="true"
+              data-id="<%= e.id %>"
+              data-title="<%= e.title %>"
+              data-html="<%= safeJsonForAttr(e.embed_html) %>"
+              data-order="<%= e.order_index %>"
+              data-visible="<%= e.is_visible ? '1' : '0' %>">
+              <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
+              <div class="link-admin-main">
+                <div class="link-admin-title"><%= e.title %></div>
+                <div class="link-admin-url">Embed block</div>
               </div>
-            </div>
-            <% }) %>
+              <div class="link-admin-meta">
+                <span class="order-badge" title="Order">#<%= idx + 1 %></span>
+              </div>
+              <div class="link-admin-actions">
+                <button type="button" class="icon-action" data-action="edit" title="Edit embed">Edit</button>
+                <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= e.is_visible ? 'Hide' : 'Show' %></button>
+                <button type="button" class="icon-action danger" data-action="delete" title="Delete embed">Del</button>
+              </div>
+            </article>
+          <% }) %>
         </div>
       </section>
     </details>
 
     <details class="admin-accordion">
-      <summary>Redirects</summary>
+      <summary>
+        <span>Redirects</span>
+        <button type="button" class="btn-secondary create-new-btn" id="redirect-create-btn">Create New</button>
+      </summary>
       <section class="card section-card">
-        <form class="form form-wide" method="POST" action="/admin/redirect" id="redirect-form">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <input type="hidden" name="id" id="redirect-id">
-          <div class="grid">
-            <label>Slug (no slash)<input name="slug" id="redirect-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required></label>
-            <label>Target URL<input name="target_url" id="redirect-url" type="url" placeholder="https://..." required></label>
-            <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-active" checked> Active</label>
-          </div>
-          <div class="actions">
-            <button id="redirect-submit" type="submit">Add Redirect</button>
-            <button id="redirect-cancel" type="button" class="btn-secondary hidden">Cancel</button>
-          </div>
-        </form>
-        <div class="table">
-          <div class="row head row-redirect-head">
-            <div>ID</div>
-            <div>Slug</div>
-            <div>Target</div>
-            <div>Active</div>
-            <div>Actions</div>
-          </div>
+        <div class="links-help muted">Manage short slugs quickly. Toggle active state without refreshing.</div>
+        <div id="redirects-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
           <% redirects.forEach(r => { %>
-            <div class="row row-redirect">
-              <div><%= r.id %></div>
-              <div>/<%= r.slug %></div>
-              <div><a href="<%= r.target_url %>" target="_blank" rel="noopener noreferrer"><%= r.target_url %></a></div>
-              <div><%= r.is_active ? 'Yes' : 'No' %></div>
-              <div class="actions">
-                <button
-                  type="button"
-                  class="btn-secondary btn-redirect-edit"
-                  data-id="<%= r.id %>"
-                  data-slug="<%= r.slug %>"
-                  data-url="<%= r.target_url %>"
-                  data-active="<%= r.is_active ? '1' : '0' %>">Edit</button>
-                <form method="POST" action="/admin/redirect/delete" class="confirm-delete-form" data-label="redirect #<%= r.id %>">
-                  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-                  <input type="hidden" name="id" value="<%= r.id %>">
-                  <button class="btn-danger" type="submit">Delete</button>
-                </form>
+            <article
+              class="link-admin-item <%= r.is_active ? '' : 'is-hidden-link' %>"
+              data-id="<%= r.id %>"
+              data-slug="<%= r.slug %>"
+              data-url="<%= r.target_url %>"
+              data-active="<%= r.is_active ? '1' : '0' %>">
+              <button type="button" class="icon-action" title="Slug" aria-label="Slug">/</button>
+              <div class="link-admin-main">
+                <div class="link-admin-title">/<%= r.slug %></div>
+                <a class="link-admin-url" href="<%= r.target_url %>" target="_blank" rel="noopener noreferrer"><%= r.target_url %></a>
               </div>
-            </div>
-            <% }) %>
+              <div class="link-admin-meta">
+                <span class="link-pill"><%= r.is_active ? 'Active' : 'Inactive' %></span>
+              </div>
+              <div class="link-admin-actions">
+                <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
+                <button type="button" class="icon-action" data-action="toggle" title="Toggle active"><%= r.is_active ? 'Off' : 'On' %></button>
+                <button type="button" class="icon-action danger" data-action="delete" title="Delete redirect">Del</button>
+              </div>
+            </article>
+          <% }) %>
         </div>
       </section>
     </details>
   </div>
+
+  <div id="admin-modal-overlay" class="modal-overlay" hidden>
+    <div class="modal-shell">
+      <section id="link-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="link-modal-title">Create Link</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="link-modal-form" class="modal-form">
+          <input type="hidden" name="id" id="link-modal-id">
+          <label>Title<input name="title" id="link-modal-title-input" required></label>
+          <label>URL<input name="url" id="link-modal-url" type="url" required></label>
+          <label>Icon key
+            <select name="icon_key" id="link-modal-icon">
+              <option value="">(none)</option>
+              <% icons.forEach(i => { %>
+                <option value="<%= i %>"><%= i %></option>
+              <% }) %>
+            </select>
+          </label>
+          <label>
+            Button color
+            <div class="inline-color-picker">
+              <input name="color_hex" id="link-modal-color" class="color-input" type="color" value="#2a2a2a">
+              <span id="link-modal-color-preview" class="color-chip color-chip-lg" title="#2a2a2a"></span>
+            </div>
+          </label>
+          <label class="checkbox"><input type="checkbox" name="is_visible" id="link-modal-visible" checked> Visible</label>
+          <div class="modal-actions">
+            <button type="submit">Save Link</button>
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="embed-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="embed-modal-title">Create Embed</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="embed-modal-form" class="modal-form">
+          <input type="hidden" name="id" id="embed-modal-id">
+          <label>Title<input name="title" id="embed-modal-title-input" required></label>
+          <label>Embed HTML<textarea name="embed_html" id="embed-modal-html" rows="6" required></textarea></label>
+          <label class="checkbox"><input type="checkbox" name="is_visible" id="embed-modal-visible" checked> Visible</label>
+          <div class="modal-actions">
+            <button type="submit">Save Embed</button>
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="redirect-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="redirect-modal-title">Create Redirect</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="redirect-modal-form" class="modal-form">
+          <input type="hidden" name="id" id="redirect-modal-id">
+          <label>Slug<input name="slug" id="redirect-modal-slug" placeholder="portfolio" pattern="[a-z0-9_-]{1,80}" required></label>
+          <label>Target URL<input name="target_url" id="redirect-modal-url" type="url" placeholder="https://..." required></label>
+          <label class="checkbox"><input type="checkbox" name="is_active" id="redirect-modal-active" checked> Active</label>
+          <div class="modal-actions">
+            <button type="submit">Save Redirect</button>
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
   <script src="/static/js/admin.js" defer></script>
 </body>
 
