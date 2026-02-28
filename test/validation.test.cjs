@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeHttpUrl, sanitizeSlug, sanitizeColorHex, sanitizeEmbedHtml } = require('../server.cjs');
+const { normalizeHttpUrl, sanitizeSlug, sanitizeColorHex, sanitizeEmbedHtml, buildTrackedDestinationUrl } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
   assert.equal(normalizeHttpUrl('https://example.com/path'), 'https://example.com/path');
@@ -16,6 +16,7 @@ test('normalizeHttpUrl rejects dangerous schemes and invalid URLs', () => {
 test('sanitizeSlug enforces a safe slug format', () => {
   assert.equal(sanitizeSlug('My-Slug_12'), 'my-slug_12');
   assert.equal(sanitizeSlug('/admin/'), '');
+  assert.equal(sanitizeSlug('/out/'), '');
   assert.equal(sanitizeSlug('a'.repeat(81)), '');
   assert.equal(sanitizeSlug('bad slug'), '');
 });
@@ -43,4 +44,17 @@ test('sanitizeEmbedHtml drops scripts and non-allowlisted iframe hosts', () => {
 
   const badHost = sanitizeEmbedHtml('<iframe src="https://evil.example.com/embed/x"></iframe>');
   assert.equal(badHost, '');
+});
+
+test('buildTrackedDestinationUrl appends sanitized UTM params', () => {
+  const output = buildTrackedDestinationUrl('https://example.com/path?existing=1', {
+    utm_source: 'instagram',
+    utm_medium: 'bio',
+    utm_campaign: 'launch'
+  });
+  assert.match(output, /^https:\/\/example\.com\/path\?/);
+  assert.match(output, /existing=1/);
+  assert.match(output, /utm_source=instagram/);
+  assert.match(output, /utm_medium=bio/);
+  assert.match(output, /utm_campaign=launch/);
 });

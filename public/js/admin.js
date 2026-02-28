@@ -330,7 +330,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const modals = {
       link: $('#link-modal', overlay || document),
       embed: $('#embed-modal', overlay || document),
-      redirect: $('#redirect-modal', overlay || document)
+      redirect: $('#redirect-modal', overlay || document),
+      utm: $('#utm-modal', overlay || document)
     };
 
     if (!overlay) {
@@ -394,7 +395,135 @@ document.addEventListener('DOMContentLoaded', () => {
     return closest;
   }
 
-  function setupLinksManager(modal) {
+  function setupUtmBuilder(modal) {
+    const form = $('#utm-modal-form');
+    const modalTitle = $('#utm-modal-title');
+    const baseUrlEl = $('#utm-base-url');
+    const resultUrlEl = $('#utm-result-url');
+    const copyBtn = $('#utm-copy-btn');
+    const copyStatusEl = $('#utm-copy-status');
+    const sourceEl = $('#utm-source');
+    const mediumEl = $('#utm-medium');
+    const campaignEl = $('#utm-campaign');
+    const termEl = $('#utm-term');
+    const contentEl = $('#utm-content');
+
+    if (!form || !baseUrlEl || !resultUrlEl || !copyBtn) {
+      return {
+        openForLink: () => {},
+        openForRedirect: () => {}
+      };
+    }
+
+    const fields = [sourceEl, mediumEl, campaignEl, termEl, contentEl].filter(Boolean);
+    const toSafeText = value => String(value || '').trim().slice(0, 120);
+    let currentBaseUrl = '';
+
+    const updateStatus = (message, type = '') => {
+      if (!copyStatusEl) return;
+      copyStatusEl.textContent = message;
+      copyStatusEl.classList.remove('text-success', 'text-danger');
+      if (type === 'success') copyStatusEl.classList.add('text-success');
+      if (type === 'error') copyStatusEl.classList.add('text-danger');
+    };
+
+    const buildTrackedUrl = () => {
+      if (!currentBaseUrl) return '';
+      let parsed;
+      try {
+        parsed = new URL(currentBaseUrl);
+      } catch {
+        return '';
+      }
+
+      const mapping = {
+        utm_source: sourceEl,
+        utm_medium: mediumEl,
+        utm_campaign: campaignEl,
+        utm_term: termEl,
+        utm_content: contentEl
+      };
+
+      Object.entries(mapping).forEach(([key, field]) => {
+        const value = toSafeText(field?.value);
+        if (value) parsed.searchParams.set(key, value);
+        else parsed.searchParams.delete(key);
+      });
+
+      return parsed.toString();
+    };
+
+    const syncTrackedUrl = () => {
+      const tracked = buildTrackedUrl();
+      resultUrlEl.value = tracked;
+      return tracked;
+    };
+
+    const resetUtmFields = () => {
+      fields.forEach(field => {
+        field.value = '';
+      });
+    };
+
+    const openUtmModal = ({ kind, label, baseUrl }) => {
+      currentBaseUrl = String(baseUrl || '');
+      if (!currentBaseUrl) return;
+
+      resetUtmFields();
+      baseUrlEl.value = currentBaseUrl;
+      if (modalTitle) modalTitle.textContent = `Tracked Link Builder: ${label || kind}`;
+      syncTrackedUrl();
+      updateStatus('Build a campaign URL and copy it in one click.');
+      modal.open('utm');
+      sourceEl?.focus();
+    };
+
+    fields.forEach(field => {
+      field.addEventListener('input', () => {
+        syncTrackedUrl();
+      });
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      const tracked = syncTrackedUrl();
+      if (!tracked) {
+        updateStatus('Unable to build tracked URL', 'error');
+        return;
+      }
+
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(tracked);
+        } else {
+          resultUrlEl.focus();
+          resultUrlEl.select();
+          document.execCommand('copy');
+        }
+        updateStatus('Tracked URL copied to clipboard', 'success');
+      } catch {
+        updateStatus('Copy failed. You can still select and copy manually.', 'error');
+      }
+    });
+
+    return {
+      openForLink(item) {
+        const id = Number(item?.dataset?.id || 0);
+        if (!id) return;
+        const label = item?.dataset?.title || `Link #${id}`;
+        const baseUrl = `${window.location.origin}/out/${id}`;
+        openUtmModal({ kind: 'link', label, baseUrl });
+      },
+      openForRedirect(item) {
+        const slugRaw = String(item?.dataset?.slug || '').trim().replace(/^\/+/, '');
+        if (!slugRaw) return;
+        const label = `/${slugRaw}`;
+        const baseUrl = `${window.location.origin}/${encodeURIComponent(slugRaw)}`;
+        openUtmModal({ kind: 'redirect', label, baseUrl });
+      }
+    };
+  }
+
+  function setupLinksManager(modal, utmBuilder) {
     const list = $('#links-admin-list');
     const createBtn = $('#link-create-btn');
     const form = $('#link-modal-form');
@@ -521,6 +650,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit link">Edit</button>
+          <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
           <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility">Hide</button>
           <button type="button" class="icon-action danger" data-action="delete" title="Delete link">Del</button>
         </div>
@@ -633,6 +763,11 @@ document.addEventListener('DOMContentLoaded', () => {
       try {
         if (action === 'edit') {
           openEditModal(item);
+          return;
+        }
+
+        if (action === 'utm') {
+          utmBuilder?.openForLink(item);
           return;
         }
 
@@ -965,7 +1100,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncOrderBadges();
   }
 
-  function setupRedirectsManager(modal) {
+  function setupRedirectsManager(modal, utmBuilder) {
     const list = $('#redirects-admin-list');
     const createBtn = $('#redirect-create-btn');
     const form = $('#redirect-modal-form');
@@ -1019,6 +1154,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
+          <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
           <button type="button" class="icon-action" data-action="toggle" title="Toggle active">Off</button>
           <button type="button" class="icon-action danger" data-action="delete" title="Delete redirect">Del</button>
         </div>
@@ -1120,6 +1256,11 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        if (action === 'utm') {
+          utmBuilder?.openForRedirect(item);
+          return;
+        }
+
         if (action === 'toggle') {
           const nextActive = item.dataset.active === '1' ? 0 : 1;
           const result = await postUrlEncoded('/admin/redirect/toggle', {
@@ -1161,12 +1302,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   const modal = createModalController();
+  const utmBuilder = setupUtmBuilder(modal);
   setupSummaryButtons();
   setupSettingsTabs();
   setupThemeColorPreview();
   setupSettingsSave();
   setupLivePreview();
-  setupLinksManager(modal);
+  setupLinksManager(modal, utmBuilder);
   setupEmbedsManager(modal);
-  setupRedirectsManager(modal);
+  setupRedirectsManager(modal, utmBuilder);
 });

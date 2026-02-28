@@ -96,7 +96,7 @@
 
     <main class="links">
       <% links.forEach(l => { %>
-        <a class="link-card" data-color="<%= l.color_hex || '' %>" href="<%= l.url %>" target="_blank" rel="noopener noreferrer">
+        <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
           <% if (l.icon_key) { %>
             <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
             <% } %>

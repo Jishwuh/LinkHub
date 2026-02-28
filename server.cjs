@@ -13,7 +13,7 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
-const RESERVED_SLUGS = new Set(['admin', 'static', 'api', 'debug']);
+const RESERVED_SLUGS = new Set(['admin', 'static', 'api', 'debug', 'out']);
 const ALLOWED_EMBED_HOSTNAMES = [
   'www.youtube.com',
   'youtube.com',
@@ -53,6 +53,13 @@ const ALLOWED_BUTTON_STYLES = ['rounded', 'pill', 'square', 'glass'];
 const ALLOWED_ANIMATION_STYLES = ['none', 'subtle', 'energetic'];
 const ALLOWED_GRADIENT_PRESETS = ['sunset', 'ocean', 'forest', 'neon', 'midnight'];
 const ALLOWED_PATTERN_PRESETS = ['none', 'grid', 'dots', 'noise'];
+const UTM_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+let countryNameResolver = null;
+try {
+  countryNameResolver = new Intl.DisplayNames(['en'], { type: 'region' });
+} catch {
+  countryNameResolver = null;
+}
 
 function parseBoolean(value, defaultValue = false) {
   if (value == null || value === '') return defaultValue;
@@ -169,6 +176,101 @@ function normalizeHttpUrl(value) {
   } catch {
     return '';
   }
+}
+
+function sanitizeUtmParamValue(value) {
+  return sanitizeText(value, 120).replace(/[\r\n\t]/g, ' ');
+}
+
+function readUtmParamsFromQuery(query) {
+  const params = {};
+  let hasAny = false;
+  for (const key of UTM_PARAM_KEYS) {
+    const value = sanitizeUtmParamValue(query?.[key]);
+    params[key] = value;
+    if (value) hasAny = true;
+  }
+  return { params, hasAny };
+}
+
+function buildTrackedDestinationUrl(baseUrl, utmParams) {
+  const normalizedBase = normalizeHttpUrl(baseUrl);
+  if (!normalizedBase) return '';
+
+  let parsed;
+  try {
+    parsed = new URL(normalizedBase);
+  } catch {
+    return '';
+  }
+
+  for (const key of UTM_PARAM_KEYS) {
+    const value = sanitizeUtmParamValue(utmParams?.[key]);
+    if (value) parsed.searchParams.set(key, value);
+  }
+  return parsed.toString();
+}
+
+function parseReferrerHost(referrerUrl) {
+  const normalized = normalizeHttpUrl(referrerUrl);
+  if (!normalized) return '';
+  try {
+    return new URL(normalized).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function detectDeviceType(userAgentValue) {
+  const ua = String(userAgentValue || '').toLowerCase();
+  if (!ua) return 'unknown';
+  if (/bot|crawl|spider|slurp|preview/.test(ua)) return 'bot';
+  if (/tablet|ipad/.test(ua)) return 'tablet';
+  if (/mobi|android|iphone|ipod/.test(ua)) return 'mobile';
+  return 'desktop';
+}
+
+function normalizeCountryCode(value) {
+  const raw = String(value || '').trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(raw)) return raw;
+  return '';
+}
+
+function resolveCountryName(code) {
+  if (!code) return '';
+  if (!countryNameResolver) return code;
+  return String(countryNameResolver.of(code) || code);
+}
+
+function getGeoFromRequestHeaders(req) {
+  const countryCode = normalizeCountryCode(
+    req.get('cf-ipcountry') || req.get('x-vercel-ip-country') || req.get('cloudfront-viewer-country') || req.get('x-country-code')
+  );
+  const city = sanitizeText(
+    req.get('x-vercel-ip-city') || req.get('cloudfront-viewer-city') || req.get('cf-ipcity') || req.get('x-geo-city'),
+    100
+  );
+
+  return {
+    countryCode,
+    countryName: resolveCountryName(countryCode),
+    city
+  };
+}
+
+function parseAnalyticsDays(value, fallback = 30) {
+  const allowed = [1, 7, 30, 90, 365];
+  const parsed = Number.parseInt(String(value || ''), 10);
+  if (allowed.includes(parsed)) return parsed;
+  return fallback;
+}
+
+function csvEscape(value) {
+  const raw = String(value ?? '');
+  if (/[",\r\n]/.test(raw)) {
+    return `"${raw.replace(/"/g, '""')}"`;
+  }
+  return raw;
 }
 
 function normalizePublicDomain(value) {
@@ -468,6 +570,283 @@ function createApp(passedConfig) {
     }
   }
 
+  async function ensureClickEventsSchema() {
+    await run(`
+      CREATE TABLE IF NOT EXISTS click_events (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        event_type ENUM('link', 'redirect') NOT NULL,
+        link_id INT NULL,
+        redirect_id INT NULL,
+        redirect_slug VARCHAR(191) NULL,
+        destination_url VARCHAR(2048) NOT NULL,
+        referrer_url VARCHAR(2048) NULL,
+        referrer_host VARCHAR(255) NULL,
+        device_type VARCHAR(32) NOT NULL DEFAULT 'unknown',
+        country_code CHAR(2) NULL,
+        country_name VARCHAR(120) NULL,
+        city VARCHAR(100) NULL,
+        ip_hash CHAR(64) NULL,
+        utm_source VARCHAR(120) NULL,
+        utm_medium VARCHAR(120) NULL,
+        utm_campaign VARCHAR(120) NULL,
+        utm_term VARCHAR(120) NULL,
+        utm_content VARCHAR(120) NULL,
+        clicked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_click_events_clicked_at (clicked_at),
+        INDEX idx_click_events_type (event_type),
+        INDEX idx_click_events_link_id (link_id),
+        INDEX idx_click_events_redirect_id (redirect_id),
+        INDEX idx_click_events_country_code (country_code),
+        INDEX idx_click_events_referrer_host (referrer_host),
+        INDEX idx_click_events_device_type (device_type)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  }
+
+  function hashClientIp(ipValue) {
+    const ip = String(ipValue || '').trim();
+    if (!ip) return '';
+    return crypto.createHash('sha256').update(`${config.sessionSecret}:${ip}`).digest('hex');
+  }
+
+  async function recordClickEvent(req, payload) {
+    const eventType = payload?.eventType === 'redirect' ? 'redirect' : 'link';
+    const linkId = Number(payload?.linkId || 0) || null;
+    const redirectId = Number(payload?.redirectId || 0) || null;
+    const redirectSlug = sanitizeText(payload?.redirectSlug || '', 191);
+    const destinationUrl = normalizeHttpUrl(payload?.destinationUrl);
+    if (!destinationUrl) return;
+
+    const utm = payload?.utm || readUtmParamsFromQuery(req.query).params;
+    const referrerUrl = normalizeHttpUrl(req.get('referer'));
+    const referrerHost = parseReferrerHost(referrerUrl);
+    const userAgent = sanitizeText(req.get('user-agent'), 512);
+    const geo = getGeoFromRequestHeaders(req);
+    const deviceType = detectDeviceType(userAgent);
+    const ipHash = hashClientIp(clientIp(req));
+
+    await run(
+      `INSERT INTO click_events (
+        event_type, link_id, redirect_id, redirect_slug, destination_url,
+        referrer_url, referrer_host, device_type, country_code, country_name, city, ip_hash,
+        utm_source, utm_medium, utm_campaign, utm_term, utm_content
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        eventType,
+        linkId,
+        redirectId,
+        redirectSlug || null,
+        destinationUrl,
+        referrerUrl || null,
+        referrerHost || null,
+        deviceType,
+        geo.countryCode || null,
+        geo.countryName || null,
+        geo.city || null,
+        ipHash || null,
+        sanitizeUtmParamValue(utm.utm_source) || null,
+        sanitizeUtmParamValue(utm.utm_medium) || null,
+        sanitizeUtmParamValue(utm.utm_campaign) || null,
+        sanitizeUtmParamValue(utm.utm_term) || null,
+        sanitizeUtmParamValue(utm.utm_content) || null
+      ]
+    );
+  }
+
+  async function getAnalyticsSnapshot(days) {
+    const safeDays = parseAnalyticsDays(days);
+    const visits = await get('SELECT `value` AS v FROM metrics WHERE `key` = ?', ['visits']);
+    const totalVisits = Number(visits?.v || 0);
+
+    const totalsRow = await get(
+      `
+        SELECT
+          COUNT(*) AS total_clicks,
+          SUM(CASE WHEN event_type = 'link' THEN 1 ELSE 0 END) AS link_clicks,
+          SUM(CASE WHEN event_type = 'redirect' THEN 1 ELSE 0 END) AS redirect_clicks,
+          COUNT(DISTINCT ip_hash) AS unique_clickers
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+      `,
+      [safeDays]
+    );
+
+    const linkRowsRaw = await q(
+      `
+        SELECT
+          l.id,
+          l.title,
+          l.url,
+          COALESCE(COUNT(e.id), 0) AS clicks,
+          COALESCE(COUNT(DISTINCT e.ip_hash), 0) AS unique_clicks
+        FROM links l
+        LEFT JOIN click_events e
+          ON e.link_id = l.id
+          AND e.event_type = 'link'
+          AND e.clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY l.id, l.title, l.url, l.order_index
+        ORDER BY clicks DESC, l.order_index ASC, l.id ASC
+      `,
+      [safeDays]
+    );
+
+    const linkRows = linkRowsRaw.map(row => {
+      const clicks = Number(row.clicks || 0);
+      const ctr = totalVisits > 0 ? (clicks / totalVisits) * 100 : 0;
+      return {
+        id: Number(row.id),
+        title: row.title,
+        url: row.url,
+        clicks,
+        unique_clicks: Number(row.unique_clicks || 0),
+        ctr
+      };
+    });
+
+    const redirectRowsRaw = await q(
+      `
+        SELECT
+          r.id,
+          r.slug,
+          r.target_url,
+          COALESCE(COUNT(e.id), 0) AS clicks,
+          COALESCE(COUNT(DISTINCT e.ip_hash), 0) AS unique_clicks
+        FROM redirects r
+        LEFT JOIN click_events e
+          ON e.redirect_id = r.id
+          AND e.event_type = 'redirect'
+          AND e.clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY r.id, r.slug, r.target_url
+        ORDER BY clicks DESC, r.slug ASC
+      `,
+      [safeDays]
+    );
+    const redirectRows = redirectRowsRaw.map(row => ({
+      id: Number(row.id),
+      slug: row.slug,
+      target_url: row.target_url,
+      clicks: Number(row.clicks || 0),
+      unique_clicks: Number(row.unique_clicks || 0)
+    }));
+
+    const referrers = await q(
+      `
+        SELECT
+          COALESCE(NULLIF(referrer_host, ''), 'direct') AS referrer,
+          COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY referrer
+        ORDER BY clicks DESC
+        LIMIT 12
+      `,
+      [safeDays]
+    );
+
+    const devices = await q(
+      `
+        SELECT device_type, COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY device_type
+        ORDER BY clicks DESC
+      `,
+      [safeDays]
+    );
+
+    const countries = await q(
+      `
+        SELECT
+          COALESCE(NULLIF(country_name, ''), NULLIF(country_code, ''), 'Unknown') AS country,
+          COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY country
+        ORDER BY clicks DESC
+        LIMIT 15
+      `,
+      [safeDays]
+    );
+
+    const cityRows = await q(
+      `
+        SELECT
+          city,
+          country_code,
+          COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+          AND city IS NOT NULL
+          AND city <> ''
+        GROUP BY city, country_code
+        ORDER BY clicks DESC
+        LIMIT 15
+      `,
+      [safeDays]
+    );
+    const cities = cityRows.map(row => ({
+      city: row.country_code ? `${row.city}, ${row.country_code}` : row.city,
+      clicks: Number(row.clicks || 0)
+    }));
+
+    const hourRows = await q(
+      `
+        SELECT HOUR(clicked_at) AS hour_of_day, COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY HOUR(clicked_at)
+        ORDER BY hour_of_day ASC
+      `,
+      [safeDays]
+    );
+
+    const hourMap = new Map(hourRows.map(row => [Number(row.hour_of_day), Number(row.clicks || 0)]));
+    const timeOfDay = Array.from({ length: 24 }, (_value, hour) => ({
+      hour,
+      label: `${String(hour).padStart(2, '0')}:00`,
+      clicks: hourMap.get(hour) || 0
+    }));
+
+    const utmRows = await q(
+      `
+        SELECT
+          COALESCE(NULLIF(utm_source, ''), '(none)') AS source,
+          COALESCE(NULLIF(utm_medium, ''), '(none)') AS medium,
+          COALESCE(NULLIF(utm_campaign, ''), '(none)') AS campaign,
+          COUNT(*) AS clicks
+        FROM click_events
+        WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+        GROUP BY source, medium, campaign
+        ORDER BY clicks DESC
+        LIMIT 20
+      `,
+      [safeDays]
+    );
+
+    return {
+      days: safeDays,
+      total_visits: totalVisits,
+      total_clicks: Number(totalsRow?.total_clicks || 0),
+      link_clicks: Number(totalsRow?.link_clicks || 0),
+      redirect_clicks: Number(totalsRow?.redirect_clicks || 0),
+      unique_clickers: Number(totalsRow?.unique_clickers || 0),
+      overall_ctr: totalVisits > 0 ? (Number(totalsRow?.total_clicks || 0) / totalVisits) * 100 : 0,
+      links: linkRows,
+      redirects: redirectRows,
+      referrers: referrers.map(row => ({ referrer: row.referrer, clicks: Number(row.clicks || 0) })),
+      devices: devices.map(row => ({ device_type: row.device_type || 'unknown', clicks: Number(row.clicks || 0) })),
+      countries: countries.map(row => ({ country: row.country, clicks: Number(row.clicks || 0) })),
+      cities,
+      time_of_day: timeOfDay,
+      utm: utmRows.map(row => ({
+        source: row.source,
+        medium: row.medium,
+        campaign: row.campaign,
+        clicks: Number(row.clicks || 0)
+      }))
+    };
+  }
+
   async function getSettingsMap() {
     const rows = await q('SELECT `key`, value FROM settings');
     const map = {};
@@ -645,6 +1024,7 @@ function createApp(passedConfig) {
     `);
 
     await ensureRedirectsSchema();
+    await ensureClickEventsSchema();
 
     const defaults = [
       ['site_title', 'LinkHub'],
@@ -780,6 +1160,34 @@ function createApp(passedConfig) {
   );
 
   app.get(
+    '/out/:id',
+    asyncHandler(async (req, res, next) => {
+      const id = Number(req.params?.id || 0);
+      if (!Number.isInteger(id) || id <= 0) return next();
+
+      const link = await get('SELECT id, title, url FROM links WHERE id = ?', [id]);
+      if (!link?.url) return next();
+
+      const utm = readUtmParamsFromQuery(req.query).params;
+      const destinationUrl = buildTrackedDestinationUrl(link.url, utm);
+      if (!destinationUrl) return next();
+
+      try {
+        await recordClickEvent(req, {
+          eventType: 'link',
+          linkId: link.id,
+          destinationUrl,
+          utm
+        });
+      } catch {
+        // Do not block redirect on analytics failures.
+      }
+
+      return res.redirect(302, destinationUrl);
+    })
+  );
+
+  app.get(
     '/admin/login',
     (req, res) => {
       if (req.session.userId) return res.redirect('/admin');
@@ -827,11 +1235,13 @@ function createApp(passedConfig) {
     '/admin',
     requireAuth,
     asyncHandler(async (req, res) => {
+      const analyticsDays = parseAnalyticsDays(req.query?.analytics_days, 30);
       const links = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
       const settings = resolveUiSettings(await getSettingsMap());
       const embedsRaw = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
       const embeds = embedsRaw.map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }));
       const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
+      const analytics = await getAnalyticsSnapshot(analyticsDays);
 
       const socialsDir = path.join(__dirname, 'public', 'images', 'socials');
       let icons = [];
@@ -850,8 +1260,91 @@ function createApp(passedConfig) {
         csrfToken: req.session.csrfToken,
         embeds,
         redirects,
-        icons
+        icons,
+        analytics,
+        analyticsDays
       });
+    })
+  );
+
+  app.get(
+    '/admin/analytics/export',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const days = parseAnalyticsDays(req.query?.days, 30);
+      const scope = sanitizeChoice(req.query?.scope, ['all', 'link', 'redirect'], 'all');
+      const params = [days];
+      let whereScope = '';
+      if (scope === 'link') {
+        whereScope = ' AND event_type = ?';
+        params.push('link');
+      } else if (scope === 'redirect') {
+        whereScope = ' AND event_type = ?';
+        params.push('redirect');
+      }
+
+      const rows = await q(
+        `
+          SELECT
+            id,
+            event_type,
+            link_id,
+            redirect_id,
+            redirect_slug,
+            destination_url,
+            referrer_url,
+            referrer_host,
+            device_type,
+            country_code,
+            country_name,
+            city,
+            utm_source,
+            utm_medium,
+            utm_campaign,
+            utm_term,
+            utm_content,
+            clicked_at
+          FROM click_events
+          WHERE clicked_at >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)
+          ${whereScope}
+          ORDER BY clicked_at DESC
+          LIMIT 100000
+        `,
+        params
+      );
+
+      const headers = [
+        'id',
+        'event_type',
+        'link_id',
+        'redirect_id',
+        'redirect_slug',
+        'destination_url',
+        'referrer_url',
+        'referrer_host',
+        'device_type',
+        'country_code',
+        'country_name',
+        'city',
+        'utm_source',
+        'utm_medium',
+        'utm_campaign',
+        'utm_term',
+        'utm_content',
+        'clicked_at'
+      ];
+
+      const lines = [headers.join(',')];
+      for (const row of rows) {
+        const cols = headers.map(key => csvEscape(row[key]));
+        lines.push(cols.join(','));
+      }
+
+      const fileDate = new Date().toISOString().slice(0, 10);
+      const filename = `linkhub-analytics-${scope}-${days}d-${fileDate}.csv`;
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(lines.join('\n'));
     })
   );
 
@@ -1295,8 +1788,26 @@ function createApp(passedConfig) {
       const slug = sanitizeSlug(req.params.slug);
       if (!slug) return next();
 
-      const row = await get('SELECT target_url FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
-      if (row?.target_url) return res.redirect(302, row.target_url);
+      const row = await get('SELECT id, slug, target_url FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
+      if (row?.target_url) {
+        const utm = readUtmParamsFromQuery(req.query).params;
+        const destinationUrl = buildTrackedDestinationUrl(row.target_url, utm);
+        if (!destinationUrl) return next();
+
+        try {
+          await recordClickEvent(req, {
+            eventType: 'redirect',
+            redirectId: row.id,
+            redirectSlug: row.slug,
+            destinationUrl,
+            utm
+          });
+        } catch {
+          // Do not block redirect on analytics failures.
+        }
+
+        return res.redirect(302, destinationUrl);
+      }
       return next();
     })
   );
@@ -1374,5 +1885,6 @@ module.exports = {
   sanitizeSlug,
   sanitizeColorHex,
   normalizeHttpUrl,
-  sanitizeEmbedHtml
+  sanitizeEmbedHtml,
+  buildTrackedDestinationUrl
 };

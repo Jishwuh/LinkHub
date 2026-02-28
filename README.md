@@ -8,6 +8,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Link management (ordering, visibility, icons, custom color)
 - Redirect management (`/slug -> target URL`)
 - Custom embed blocks (strictly sanitized iframe HTML)
+- Per-link and per-redirect analytics (clicks, CTR, referrers, device, geo, hour, UTM)
 - Visit and like counters
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
@@ -29,6 +30,14 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Drag-and-drop reordering for links and embeds
   - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
   - Per-item order badges and clearer visibility state
+- Full analytics upgrade:
+  - Outbound tracking route for regular links (`/out/:id`)
+  - Redirect analytics for all short links (`/:slug`)
+  - Per-link clicks, unique clickers, and profile CTR
+  - Referrer, device type, country/city (from edge/proxy geo headers), and time-of-day breakdowns
+  - UTM campaign breakdown in admin
+  - UTM builder modal + `Copy Tracked Link` on links/redirects
+  - CSV export for all events, link-only, or redirect-only scopes
 - Color picker and swatch improvements:
   - Profile theme color now has live swatch preview
   - Link color fields include swatch preview + hover hex visibility
@@ -73,6 +82,27 @@ Everything below is configurable from **Admin -> Site Settings**.
   - `pill`
   - `square`
   - `glass`
+
+## Analytics and Growth
+
+Analytics is available in **Admin -> Analytics** with selectable date windows.
+
+- Per-link analytics:
+  - Total clicks
+  - Unique clickers (hashed-IP dedupe)
+  - CTR against profile visits
+- Redirect analytics:
+  - Click totals and unique clickers per slug
+- Traffic insights:
+  - Referrer host breakdown
+  - Device type breakdown (`desktop`, `mobile`, `tablet`, `bot`, `unknown`)
+  - Country and city breakdown (when country headers are available from your edge/proxy)
+  - Time-of-day click activity (hourly)
+- UTM tools:
+  - Build campaign links directly from link/redirect rows
+  - One-click copy of tracked URLs
+- CSV export:
+  - Export click event history from admin (`all`, `link`, `redirect` scope)
 
 ### Typography, motion, and personality
 
@@ -194,6 +224,7 @@ npm start
   - Legacy/stored embed HTML is sanitized again before render (defense in depth)
 - Session-backed CSRF token is required on admin writes.
 - `TRUST_PROXY` should match your deployment topology.
+- Click analytics stores hashed IP (`sha256` with session-secret salt) for unique counts, not raw IPs.
 
 ## Quality Checks
 

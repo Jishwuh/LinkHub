@@ -307,6 +307,7 @@
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit link">Edit</button>
+                <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
                 <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= l.is_visible ? 'Hide' : 'Show' %></button>
                 <button type="button" class="icon-action danger" data-action="delete" title="Delete link">Del</button>
               </div>
@@ -377,11 +378,222 @@
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
+                <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
                 <button type="button" class="icon-action" data-action="toggle" title="Toggle active"><%= r.is_active ? 'Off' : 'On' %></button>
                 <button type="button" class="icon-action danger" data-action="delete" title="Delete redirect">Del</button>
               </div>
             </article>
           <% }) %>
+        </div>
+      </section>
+    </details>
+
+    <details class="admin-accordion">
+      <summary>
+        <span>Analytics</span>
+      </summary>
+      <section class="card section-card analytics-shell">
+        <div class="analytics-toolbar">
+          <form method="GET" action="/admin" class="analytics-filter-form">
+            <label class="analytics-filter-label">
+              Range
+              <select name="analytics_days">
+                <option value="1" <%= analyticsDays === 1 ? 'selected' : '' %>>Last 24h</option>
+                <option value="7" <%= analyticsDays === 7 ? 'selected' : '' %>>Last 7 days</option>
+                <option value="30" <%= analyticsDays === 30 ? 'selected' : '' %>>Last 30 days</option>
+                <option value="90" <%= analyticsDays === 90 ? 'selected' : '' %>>Last 90 days</option>
+                <option value="365" <%= analyticsDays === 365 ? 'selected' : '' %>>Last 365 days</option>
+              </select>
+            </label>
+            <button type="submit" class="btn-secondary">Apply</button>
+          </form>
+          <div class="analytics-export-actions">
+            <a class="btn-secondary analytics-export-link" href="/admin/analytics/export?days=<%= analyticsDays %>&scope=all">Export CSV (All)</a>
+            <a class="btn-secondary analytics-export-link" href="/admin/analytics/export?days=<%= analyticsDays %>&scope=link">Links CSV</a>
+            <a class="btn-secondary analytics-export-link" href="/admin/analytics/export?days=<%= analyticsDays %>&scope=redirect">Redirects CSV</a>
+          </div>
+        </div>
+
+        <div class="analytics-metrics-grid">
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Profile Visits</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.total_visits || 0).toLocaleString() %></div>
+          </article>
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Total Clicks</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.total_clicks || 0).toLocaleString() %></div>
+          </article>
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Unique Clickers</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.unique_clickers || 0).toLocaleString() %></div>
+          </article>
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Overall CTR</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.overall_ctr || 0).toFixed(2) %>%</div>
+          </article>
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Link Clicks</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.link_clicks || 0).toLocaleString() %></div>
+          </article>
+          <article class="analytics-metric-card">
+            <div class="analytics-metric-label">Redirect Clicks</div>
+            <div class="analytics-metric-value"><%= Number(analytics?.redirect_clicks || 0).toLocaleString() %></div>
+          </article>
+        </div>
+
+        <div class="analytics-grid">
+          <article class="analytics-block">
+            <h3>Per-Link Performance</h3>
+            <div class="analytics-table-wrap">
+              <table class="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Link</th>
+                    <th>Clicks</th>
+                    <th>Unique</th>
+                    <th>CTR</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if (analytics?.links?.length) { %>
+                    <% analytics.links.forEach(row => { %>
+                      <tr>
+                        <td title="<%= row.url %>"><%= row.title %></td>
+                        <td><%= Number(row.clicks || 0).toLocaleString() %></td>
+                        <td><%= Number(row.unique_clicks || 0).toLocaleString() %></td>
+                        <td><%= Number(row.ctr || 0).toFixed(2) %>%</td>
+                      </tr>
+                    <% }) %>
+                  <% } else { %>
+                    <tr><td colspan="4" class="analytics-empty">No link clicks in this range yet.</td></tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="analytics-block">
+            <h3>Redirect Performance</h3>
+            <div class="analytics-table-wrap">
+              <table class="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Slug</th>
+                    <th>Clicks</th>
+                    <th>Unique</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if (analytics?.redirects?.length) { %>
+                    <% analytics.redirects.forEach(row => { %>
+                      <tr>
+                        <td title="<%= row.target_url %>">/<%= row.slug %></td>
+                        <td><%= Number(row.clicks || 0).toLocaleString() %></td>
+                        <td><%= Number(row.unique_clicks || 0).toLocaleString() %></td>
+                      </tr>
+                    <% }) %>
+                  <% } else { %>
+                    <tr><td colspan="3" class="analytics-empty">No redirect clicks in this range yet.</td></tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          </article>
+
+          <article class="analytics-block">
+            <h3>Referrers</h3>
+            <ul class="analytics-list">
+              <% if (analytics?.referrers?.length) { %>
+                <% analytics.referrers.forEach(row => { %>
+                  <li><span><%= row.referrer %></span><strong><%= Number(row.clicks || 0).toLocaleString() %></strong></li>
+                <% }) %>
+              <% } else { %>
+                <li class="analytics-empty">No referrer data yet.</li>
+              <% } %>
+            </ul>
+          </article>
+
+          <article class="analytics-block">
+            <h3>Devices</h3>
+            <ul class="analytics-list">
+              <% if (analytics?.devices?.length) { %>
+                <% analytics.devices.forEach(row => { %>
+                  <li><span><%= row.device_type %></span><strong><%= Number(row.clicks || 0).toLocaleString() %></strong></li>
+                <% }) %>
+              <% } else { %>
+                <li class="analytics-empty">No device data yet.</li>
+              <% } %>
+            </ul>
+          </article>
+
+          <article class="analytics-block">
+            <h3>Countries</h3>
+            <ul class="analytics-list">
+              <% if (analytics?.countries?.length) { %>
+                <% analytics.countries.forEach(row => { %>
+                  <li><span><%= row.country %></span><strong><%= Number(row.clicks || 0).toLocaleString() %></strong></li>
+                <% }) %>
+              <% } else { %>
+                <li class="analytics-empty">No country data yet.</li>
+              <% } %>
+            </ul>
+          </article>
+
+          <article class="analytics-block">
+            <h3>Cities</h3>
+            <ul class="analytics-list">
+              <% if (analytics?.cities?.length) { %>
+                <% analytics.cities.forEach(row => { %>
+                  <li><span><%= row.city %></span><strong><%= Number(row.clicks || 0).toLocaleString() %></strong></li>
+                <% }) %>
+              <% } else { %>
+                <li class="analytics-empty">No city data yet.</li>
+              <% } %>
+            </ul>
+          </article>
+
+          <article class="analytics-block analytics-block-wide">
+            <h3>Time of Day</h3>
+            <ul class="analytics-list analytics-list-time">
+              <% if (analytics?.time_of_day?.length) { %>
+                <% analytics.time_of_day.forEach(row => { %>
+                  <li><span><%= row.label %></span><strong><%= Number(row.clicks || 0).toLocaleString() %></strong></li>
+                <% }) %>
+              <% } else { %>
+                <li class="analytics-empty">No hourly data yet.</li>
+              <% } %>
+            </ul>
+          </article>
+
+          <article class="analytics-block analytics-block-wide">
+            <h3>UTM Campaign Breakdown</h3>
+            <div class="analytics-table-wrap">
+              <table class="analytics-table">
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th>Medium</th>
+                    <th>Campaign</th>
+                    <th>Clicks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% if (analytics?.utm?.length) { %>
+                    <% analytics.utm.forEach(row => { %>
+                      <tr>
+                        <td><%= row.source %></td>
+                        <td><%= row.medium %></td>
+                        <td><%= row.campaign %></td>
+                        <td><%= Number(row.clicks || 0).toLocaleString() %></td>
+                      </tr>
+                    <% }) %>
+                  <% } else { %>
+                    <tr><td colspan="4" class="analytics-empty">No UTM-tagged traffic yet.</td></tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          </article>
         </div>
       </section>
     </details>
@@ -487,6 +699,50 @@
           <div class="modal-actions">
             <button type="submit">Save Redirect</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="utm-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="utm-modal-title">Tracked Link Builder</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="utm-modal-form" class="modal-form" onsubmit="return false;">
+          <label class="modal-field">
+            <span class="modal-label">Base tracking URL</span>
+            <input id="utm-base-url" type="text" readonly>
+          </label>
+          <div class="modal-grid modal-grid-2">
+            <label class="modal-field">
+              <span class="modal-label">UTM Source</span>
+              <input id="utm-source" name="utm_source" placeholder="instagram">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">UTM Medium</span>
+              <input id="utm-medium" name="utm_medium" placeholder="bio">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">UTM Campaign</span>
+              <input id="utm-campaign" name="utm_campaign" placeholder="spring-launch">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">UTM Term</span>
+              <input id="utm-term" name="utm_term" placeholder="optional">
+            </label>
+          </div>
+          <label class="modal-field">
+            <span class="modal-label">UTM Content</span>
+            <input id="utm-content" name="utm_content" placeholder="button-a">
+          </label>
+          <label class="modal-field">
+            <span class="modal-label">Tracked URL</span>
+            <input id="utm-result-url" type="text" readonly>
+          </label>
+          <p id="utm-copy-status" class="modal-hint">Build a campaign URL and copy it in one click.</p>
+          <div class="modal-actions">
+            <button type="button" id="utm-copy-btn">Copy Tracked Link</button>
+            <button type="button" class="btn-secondary" data-modal-close>Done</button>
           </div>
         </form>
       </section>
