@@ -354,6 +354,66 @@ body.btn-glass .link-card {
   margin-top: 1.5rem;
 }
 
+.custom-blocks {
+  display: grid;
+  gap: 14px;
+  margin: 1rem 0;
+}
+
+.block {
+  width: 100%;
+}
+
+.block-heading h1,
+.block-heading h2,
+.block-heading h3 {
+  margin: 0.2rem 0;
+  text-align: center;
+}
+
+.block-richtext .block-richtext-content {
+  color: var(--text);
+}
+
+.block-richtext .block-richtext-content p:first-child {
+  margin-top: 0;
+}
+
+.block-richtext .block-richtext-content p:last-child {
+  margin-bottom: 0;
+}
+
+.block-button-link.block-btn-outline {
+  background: transparent;
+  border-color: rgba(255, 255, 255, 0.38);
+}
+
+.block-links-cluster .links {
+  margin: 0;
+}
+
+.block-image {
+  margin: 0;
+  overflow: hidden;
+}
+
+.block-image img {
+  width: 100%;
+  display: block;
+  border-radius: 10px;
+  object-fit: cover;
+}
+
+.block-image figcaption {
+  color: var(--muted);
+  font-size: 0.86rem;
+  margin-top: 8px;
+}
+
+.block-embed h3 {
+  margin-top: 0;
+}
+
 .card {
   background: var(--card);
   padding: 16px;
@@ -1041,6 +1101,14 @@ button,
 .modal-field {
   display: grid;
   gap: 6px;
+}
+
+.modal-field-span2 {
+  grid-column: span 2;
+}
+
+.block-type-group[hidden] {
+  display: none !important;
 }
 
 .modal-label {

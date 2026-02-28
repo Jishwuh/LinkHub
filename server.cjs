@@ -53,6 +53,9 @@ const ALLOWED_BUTTON_STYLES = ['rounded', 'pill', 'square', 'glass'];
 const ALLOWED_ANIMATION_STYLES = ['none', 'subtle', 'energetic'];
 const ALLOWED_GRADIENT_PRESETS = ['sunset', 'ocean', 'forest', 'neon', 'midnight'];
 const ALLOWED_PATTERN_PRESETS = ['none', 'grid', 'dots', 'noise'];
+const BLOCK_TYPES = ['heading', 'rich_text', 'button_link', 'image', 'embed', 'links_cluster'];
+const BLOCK_HEADING_LEVELS = ['h1', 'h2', 'h3'];
+const BLOCK_BUTTON_STYLES = ['solid', 'outline'];
 const UTM_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
 let countryNameResolver = null;
 try {
@@ -383,6 +386,151 @@ function sanitizeEmbedHtml(value) {
   return firstIframeWithSrc ? firstIframeWithSrc[0] : '';
 }
 
+function parseJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function normalizeBlockData(type, rawData) {
+  const data = parseJsonObject(rawData);
+
+  if (type === 'heading') {
+    const text = sanitizeText(data.text, 180);
+    const level = sanitizeChoice(data.level, BLOCK_HEADING_LEVELS, 'h2');
+    if (!text) return null;
+    return { text, level };
+  }
+
+  if (type === 'rich_text') {
+    const html = sanitizeRichText(data.html || data.content || '');
+    if (!html) return null;
+    return { html };
+  }
+
+  if (type === 'button_link') {
+    const label = sanitizeText(data.label, 120);
+    const url = normalizeHttpUrl(data.url);
+    const style = sanitizeChoice(data.style, BLOCK_BUTTON_STYLES, 'solid');
+    const newTab = parseBoolean(data.new_tab, true) ? 1 : 0;
+    if (!label || !url) return null;
+    return {
+      label,
+      url,
+      style,
+      new_tab: newTab
+    };
+  }
+
+  if (type === 'image') {
+    const src = normalizeMediaAsset(data.src || data.url);
+    const alt = sanitizeText(data.alt, 180);
+    const caption = sanitizeText(data.caption, 255);
+    if (!src) return null;
+    return {
+      src,
+      alt,
+      caption
+    };
+  }
+
+  if (type === 'embed') {
+    const title = sanitizeText(data.title, 140);
+    const embedHtml = sanitizeEmbedHtml(data.embed_html || data.html || '');
+    if (!embedHtml) return null;
+    return {
+      title,
+      embed_html: embedHtml
+    };
+  }
+
+  if (type === 'links_cluster') {
+    return {};
+  }
+
+  return null;
+}
+
+function normalizeBlockDataFromBody(type, body) {
+  if (type === 'heading') {
+    return normalizeBlockData(type, {
+      text: body?.heading_text,
+      level: body?.heading_level
+    });
+  }
+
+  if (type === 'rich_text') {
+    return normalizeBlockData(type, {
+      html: body?.rich_html
+    });
+  }
+
+  if (type === 'button_link') {
+    return normalizeBlockData(type, {
+      label: body?.button_label,
+      url: body?.button_url,
+      style: body?.button_style,
+      new_tab: body?.button_new_tab
+    });
+  }
+
+  if (type === 'image') {
+    return normalizeBlockData(type, {
+      src: body?.image_src,
+      alt: body?.image_alt,
+      caption: body?.image_caption
+    });
+  }
+
+  if (type === 'embed') {
+    return normalizeBlockData(type, {
+      title: body?.embed_title,
+      embed_html: body?.embed_html
+    });
+  }
+
+  if (type === 'links_cluster') {
+    return normalizeBlockData(type, {});
+  }
+
+  return null;
+}
+
+function blockSummary(type, dataObj) {
+  const data = normalizeBlockData(type, dataObj);
+  if (!data) return '(invalid block)';
+  if (type === 'heading') return `${data.level.toUpperCase()}: ${data.text}`;
+  if (type === 'rich_text') return sanitizeText(String(data.html).replace(/<[^>]+>/g, ' '), 120) || 'Rich text';
+  if (type === 'button_link') return `${data.label} -> ${data.url}`;
+  if (type === 'image') return data.caption || data.alt || data.src;
+  if (type === 'embed') return data.title || 'Embed block';
+  if (type === 'links_cluster') return 'Renders all links from Links section';
+  return '';
+}
+
+function normalizeBlockRow(row) {
+  if (!row) return null;
+  const type = sanitizeChoice(row.type, BLOCK_TYPES, '');
+  if (!type) return null;
+  const dataObj = normalizeBlockData(type, row.data);
+  if (!dataObj) return null;
+  return {
+    ...row,
+    page_id: Number(row.page_id || 1),
+    type,
+    order_index: Number(row.order_index || 0),
+    is_visible: Number(row.is_visible || 0) ? 1 : 0,
+    data_obj: dataObj,
+    summary: blockSummary(type, dataObj)
+  };
+}
+
 function safeJsonForAttr(value) {
   return encodeURIComponent(String(value || ''));
 }
@@ -601,6 +749,18 @@ function createApp(passedConfig) {
         INDEX idx_click_events_device_type (device_type)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+  }
+
+  async function ensureLinksClusterBlock() {
+    const blockCountRow = await get('SELECT COUNT(*) AS c FROM blocks WHERE page_id = 1');
+    if (!blockCountRow || Number(blockCountRow.c) === 0) return;
+
+    const existing = await get('SELECT id FROM blocks WHERE page_id = 1 AND type = ? LIMIT 1', ['links_cluster']);
+    if (existing?.id) return;
+
+    const maxRow = await get('SELECT COALESCE(MAX(order_index), 0) AS max_order FROM blocks WHERE page_id = 1');
+    const nextOrder = Number(maxRow?.max_order || 0) + 1;
+    await run('INSERT INTO blocks (page_id, type, data, order_index, is_visible) VALUES (?,?,?,?,?)', [1, 'links_cluster', JSON.stringify({}), nextOrder, 1]);
   }
 
   function hashClientIp(ipValue) {
@@ -961,6 +1121,21 @@ function createApp(passedConfig) {
       const demoEmbed = '<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ" title="Demo Video" loading="lazy" allowfullscreen></iframe>';
       await run('INSERT INTO embeds (title, embed_html, order_index, is_visible) VALUES (?,?,?,?)', ['Demo Embed', demoEmbed, 1, 0]);
     }
+
+    const blocksCount = await get('SELECT COUNT(*) AS c FROM blocks');
+    if (!blocksCount || Number(blocksCount.c) === 0) {
+      const sampleBlocks = [
+        ['heading', { text: 'Welcome to LinkHub', level: 'h2' }, 1, 1],
+        ['rich_text', { html: '<p>Build your page with reusable blocks, not just links.</p>' }, 2, 1],
+        ['links_cluster', {}, 3, 1],
+        ['image', { src: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=900&q=80', alt: 'Landscape', caption: 'Example image block' }, 4, 1],
+        ['embed', { title: 'Demo Video', embed_html: '<iframe src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ" title="Demo Video" loading="lazy" allowfullscreen></iframe>' }, 5, 1]
+      ];
+
+      for (const [type, data, order, visible] of sampleBlocks) {
+        await run('INSERT INTO blocks (page_id, type, data, order_index, is_visible) VALUES (?,?,?,?,?)', [1, type, JSON.stringify(data), order, visible]);
+      }
+    }
   }
 
   async function initDb() {
@@ -1020,6 +1195,21 @@ function createApp(passedConfig) {
         id INT AUTO_INCREMENT PRIMARY KEY,
         slug VARCHAR(191) UNIQUE NOT NULL,
         target_url VARCHAR(2048) NOT NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+    await run(`
+      CREATE TABLE IF NOT EXISTS blocks (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        page_id INT NOT NULL DEFAULT 1,
+        type VARCHAR(32) NOT NULL,
+        data JSON NOT NULL,
+        order_index INT DEFAULT 0,
+        is_visible TINYINT(1) DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_blocks_page_order (page_id, order_index, id),
+        INDEX idx_blocks_type (type),
+        INDEX idx_blocks_visible (is_visible)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
@@ -1086,6 +1276,7 @@ function createApp(passedConfig) {
     }
 
     await seedDemoData();
+    await ensureLinksClusterBlock();
   }
 
   app.locals.safeJsonForAttr = safeJsonForAttr;
@@ -1095,6 +1286,8 @@ function createApp(passedConfig) {
     asyncHandler(async (req, res) => {
       await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
 
+      const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 AND is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
       const links = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const embedsRaw = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const embeds = embedsRaw
@@ -1115,6 +1308,7 @@ function createApp(passedConfig) {
       }
 
       res.render('index', {
+        blocks,
         links,
         embeds,
         footerHtml,
@@ -1238,6 +1432,8 @@ function createApp(passedConfig) {
       const analyticsDays = parseAnalyticsDays(req.query?.analytics_days, 30);
       const links = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
       const settings = resolveUiSettings(await getSettingsMap());
+      const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 ORDER BY order_index ASC, id ASC');
+      const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
       const embedsRaw = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
       const embeds = embedsRaw.map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }));
       const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
@@ -1256,6 +1452,7 @@ function createApp(passedConfig) {
 
       res.render('admin_dashboard', {
         links,
+        blocks,
         settings,
         csrfToken: req.session.csrfToken,
         embeds,
@@ -1456,6 +1653,130 @@ function createApp(passedConfig) {
 
       if (wantsJson(req)) {
         return res.json({ ok: true, message: 'Link order saved', ids: cleanIds });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/block',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      const type = sanitizeChoice(req.body?.type, BLOCK_TYPES, '');
+      const pageId = Number(req.body?.page_id || 1) || 1;
+      let order = Number.parseInt(req.body?.order_index || '0', 10) || 0;
+      const visible = req.body?.is_visible ? 1 : 0;
+      const dataObj = normalizeBlockDataFromBody(type, req.body);
+
+      if (!type) return res.status(400).send('Valid block type is required');
+      if (!dataObj) return res.status(400).send('Block data is invalid for selected type');
+      if (pageId <= 0) return res.status(400).send('Invalid page id');
+
+      let blockId = id;
+      if (id > 0) {
+        await run('UPDATE blocks SET page_id = ?, type = ?, data = ?, order_index = ?, is_visible = ? WHERE id = ?', [
+          pageId,
+          type,
+          JSON.stringify(dataObj),
+          order,
+          visible,
+          id
+        ]);
+      } else {
+        if (order <= 0) {
+          const maxRow = await get('SELECT COALESCE(MAX(order_index), 0) AS max_order FROM blocks WHERE page_id = ?', [pageId]);
+          order = Number(maxRow?.max_order || 0) + 1;
+        }
+        const insertResult = await runResult('INSERT INTO blocks (page_id, type, data, order_index, is_visible) VALUES (?, ?, ?, ?, ?)', [
+          pageId,
+          type,
+          JSON.stringify(dataObj),
+          order,
+          visible
+        ]);
+        blockId = Number(insertResult.insertId || 0);
+      }
+
+      const blockRow = blockId > 0 ? await get('SELECT * FROM blocks WHERE id = ?', [blockId]) : null;
+      const block = normalizeBlockRow(blockRow);
+
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Block saved', block });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/block/delete',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (id > 0) await run('DELETE FROM blocks WHERE id = ?', [id]);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Block deleted', id });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/block/toggle',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (id <= 0) return res.status(400).send('Invalid block id');
+
+      const current = await get('SELECT id, is_visible FROM blocks WHERE id = ?', [id]);
+      if (!current) return res.status(404).send('Block not found');
+
+      const requested = req.body?.is_visible;
+      const nextVisible =
+        requested == null
+          ? current.is_visible ? 0 : 1
+          : String(requested).trim() === '1' || String(requested).trim().toLowerCase() === 'true'
+            ? 1
+            : 0;
+
+      await run('UPDATE blocks SET is_visible = ? WHERE id = ?', [nextVisible, id]);
+      const blockRow = await get('SELECT * FROM blocks WHERE id = ?', [id]);
+      const block = normalizeBlockRow(blockRow);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: nextVisible ? 'Block is visible' : 'Block is hidden', block });
+      }
+      return res.redirect('/admin');
+    })
+  );
+
+  app.post(
+    '/admin/block/reorder',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      let ids = req.body?.ids;
+      if (typeof ids === 'string') ids = [ids];
+      if (!Array.isArray(ids)) ids = [];
+
+      const cleanIds = [];
+      for (const value of ids) {
+        const parsed = Number(value);
+        if (Number.isInteger(parsed) && parsed > 0 && !cleanIds.includes(parsed)) {
+          cleanIds.push(parsed);
+        }
+      }
+
+      if (!cleanIds.length) return res.status(400).send('No valid block ids supplied');
+
+      for (let i = 0; i < cleanIds.length; i += 1) {
+        await run('UPDATE blocks SET order_index = ? WHERE id = ?', [i + 1, cleanIds[i]]);
+      }
+
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Block order saved', ids: cleanIds });
       }
       return res.redirect('/admin');
     })

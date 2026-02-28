@@ -319,6 +319,43 @@
 
     <details class="admin-accordion">
       <summary>
+        <span>Blocks</span>
+        <button type="button" class="btn-secondary create-new-btn" id="block-create-btn">Create New</button>
+      </summary>
+      <section class="card section-card">
+        <div class="links-help muted">Build your public page in order using heading, rich text, button, image, and embed blocks.</div>
+        <div id="blocks-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
+          <% blocks.forEach((b, idx) => { %>
+            <article
+              class="link-admin-item <%= b.is_visible ? '' : 'is-hidden-link' %>"
+              draggable="true"
+              data-id="<%= b.id %>"
+              data-type="<%= b.type %>"
+              data-json="<%= safeJsonForAttr(JSON.stringify(b.data_obj || {})) %>"
+              data-order="<%= b.order_index %>"
+              data-visible="<%= b.is_visible ? '1' : '0' %>">
+              <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
+              <div class="link-admin-main">
+                <div class="link-admin-title"><%= b.type.replace('_', ' ') %></div>
+                <div class="link-admin-url"><%= b.summary %></div>
+              </div>
+              <div class="link-admin-meta">
+                <span class="order-badge" title="Order">#<%= idx + 1 %></span>
+                <span class="link-pill"><%= b.type %></span>
+              </div>
+              <div class="link-admin-actions">
+                <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
+                <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= b.is_visible ? 'Hide' : 'Show' %></button>
+                <button type="button" class="icon-action danger" data-action="delete" title="Delete block">Del</button>
+              </div>
+            </article>
+          <% }) %>
+        </div>
+      </section>
+    </details>
+
+    <details class="admin-accordion">
+      <summary>
         <span>Custom Embeds</span>
         <button type="button" class="btn-secondary create-new-btn" id="embed-create-btn">Create New</button>
       </summary>
@@ -648,6 +685,107 @@
           <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
           <div class="modal-actions">
             <button type="submit">Save Link</button>
+            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="block-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="block-modal-title">Create Block</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="block-modal-form" class="modal-form">
+          <input type="hidden" name="id" id="block-modal-id">
+          <input type="hidden" name="page_id" value="1">
+
+          <label class="modal-field">
+            <span class="modal-label">Block type</span>
+            <select name="type" id="block-modal-type" required>
+              <option value="heading">Heading</option>
+              <option value="rich_text">Rich text</option>
+              <option value="links_cluster">Links Cluster</option>
+              <option value="button_link">Button link</option>
+              <option value="image">Image</option>
+              <option value="embed">Embed</option>
+            </select>
+          </label>
+
+          <div class="block-type-group" data-block-type="links_cluster" hidden>
+            <p class="modal-hint">This block renders all links from the Links section using their current order, colors, icons, and visibility.</p>
+          </div>
+
+          <div class="modal-grid modal-grid-2 block-type-group" data-block-type="heading">
+            <label class="modal-field">
+              <span class="modal-label">Heading text</span>
+              <input name="heading_text" id="block-heading-text">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Heading level</span>
+              <select name="heading_level" id="block-heading-level">
+                <option value="h1">H1</option>
+                <option value="h2">H2</option>
+                <option value="h3">H3</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="block-type-group" data-block-type="rich_text" hidden>
+            <label class="modal-field">
+              <span class="modal-label">Rich text HTML</span>
+              <textarea name="rich_html" id="block-rich-html" rows="6"></textarea>
+            </label>
+          </div>
+
+          <div class="modal-grid modal-grid-2 block-type-group" data-block-type="button_link" hidden>
+            <label class="modal-field">
+              <span class="modal-label">Button label</span>
+              <input name="button_label" id="block-button-label">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Button URL</span>
+              <input name="button_url" id="block-button-url" type="url" placeholder="https://...">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Button style</span>
+              <select name="button_style" id="block-button-style">
+                <option value="solid">Solid</option>
+                <option value="outline">Outline</option>
+              </select>
+            </label>
+            <label class="checkbox modal-checkbox"><input type="checkbox" name="button_new_tab" id="block-button-new-tab" checked> Open in new tab</label>
+          </div>
+
+          <div class="modal-grid modal-grid-2 block-type-group" data-block-type="image" hidden>
+            <label class="modal-field">
+              <span class="modal-label">Image URL</span>
+              <input name="image_src" id="block-image-src" type="url" placeholder="https://.../image.jpg">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Alt text</span>
+              <input name="image_alt" id="block-image-alt" placeholder="Describe image">
+            </label>
+            <label class="modal-field modal-field-span2">
+              <span class="modal-label">Caption</span>
+              <input name="image_caption" id="block-image-caption" placeholder="Optional caption">
+            </label>
+          </div>
+
+          <div class="block-type-group" data-block-type="embed" hidden>
+            <label class="modal-field">
+              <span class="modal-label">Embed title (optional)</span>
+              <input name="embed_title" id="block-embed-title">
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">Embed iframe HTML</span>
+              <textarea name="embed_html" id="block-embed-html" rows="6"></textarea>
+            </label>
+          </div>
+
+          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="block-modal-visible" checked> Visible</label>
+          <p class="modal-hint">Only fields for the selected block type are shown and submitted.</p>
+          <div class="modal-actions">
+            <button type="submit">Save Block</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
           </div>
         </form>

@@ -329,6 +329,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const modalCards = $$('.modal-card', overlay || document);
     const modals = {
       link: $('#link-modal', overlay || document),
+      block: $('#block-modal', overlay || document),
       embed: $('#embed-modal', overlay || document),
       redirect: $('#redirect-modal', overlay || document),
       utm: $('#utm-modal', overlay || document)
@@ -866,6 +867,335 @@ document.addEventListener('DOMContentLoaded', () => {
     syncIconPreview();
   }
 
+  function setupBlocksManager(modal) {
+    const list = $('#blocks-admin-list');
+    const createBtn = $('#block-create-btn');
+    const form = $('#block-modal-form');
+    if (!list || !createBtn || !form) return;
+
+    const modalTitle = $('#block-modal-title');
+    const idEl = $('#block-modal-id');
+    const typeEl = $('#block-modal-type');
+    const visibleEl = $('#block-modal-visible');
+
+    const headingTextEl = $('#block-heading-text');
+    const headingLevelEl = $('#block-heading-level');
+    const richHtmlEl = $('#block-rich-html');
+    const buttonLabelEl = $('#block-button-label');
+    const buttonUrlEl = $('#block-button-url');
+    const buttonStyleEl = $('#block-button-style');
+    const buttonNewTabEl = $('#block-button-new-tab');
+    const imageSrcEl = $('#block-image-src');
+    const imageAltEl = $('#block-image-alt');
+    const imageCaptionEl = $('#block-image-caption');
+    const embedTitleEl = $('#block-embed-title');
+    const embedHtmlEl = $('#block-embed-html');
+
+    const typeGroups = $$('.block-type-group', form);
+    let dragArmedId = null;
+
+    const toDisplayType = type => String(type || '').replace(/_/g, ' ').replace(/\b\w/g, ch => ch.toUpperCase());
+
+    const parseBlockJson = raw => {
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(decodeAttr(raw));
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    };
+
+    const blockSummary = (type, data) => {
+      if (type === 'heading') return `${String(data.level || 'h2').toUpperCase()}: ${String(data.text || '')}`.trim();
+      if (type === 'rich_text') return String(data.html || '').replace(/<[^>]+>/g, ' ').trim().slice(0, 120) || 'Rich text';
+      if (type === 'links_cluster') return 'Renders all links from Links section';
+      if (type === 'button_link') return `${String(data.label || '').trim()} -> ${String(data.url || '').trim()}`.trim();
+      if (type === 'image') return String(data.caption || data.alt || data.src || 'Image block').trim();
+      if (type === 'embed') return String(data.title || 'Embed block').trim();
+      return 'Block';
+    };
+
+    const setTypeVisibility = selectedType => {
+      typeGroups.forEach(group => {
+        const isVisible = group.dataset.blockType === selectedType;
+        group.hidden = !isVisible;
+        $$('input, textarea, select', group).forEach(control => {
+          control.disabled = !isVisible;
+        });
+      });
+    };
+
+    const resetModalFields = () => {
+      idEl.value = '';
+      typeEl.value = 'heading';
+      visibleEl.checked = true;
+
+      if (headingTextEl) headingTextEl.value = '';
+      if (headingLevelEl) headingLevelEl.value = 'h2';
+      if (richHtmlEl) richHtmlEl.value = '';
+      if (buttonLabelEl) buttonLabelEl.value = '';
+      if (buttonUrlEl) buttonUrlEl.value = '';
+      if (buttonStyleEl) buttonStyleEl.value = 'solid';
+      if (buttonNewTabEl) buttonNewTabEl.checked = true;
+      if (imageSrcEl) imageSrcEl.value = '';
+      if (imageAltEl) imageAltEl.value = '';
+      if (imageCaptionEl) imageCaptionEl.value = '';
+      if (embedTitleEl) embedTitleEl.value = '';
+      if (embedHtmlEl) embedHtmlEl.value = '';
+
+      setTypeVisibility('heading');
+    };
+
+    const syncOrderBadges = () => {
+      $$('.link-admin-item', list).forEach((item, idx) => {
+        item.dataset.order = String(idx + 1);
+        const badge = $('.order-badge', item);
+        if (badge) badge.textContent = `#${idx + 1}`;
+      });
+    };
+
+    const setBlockItem = (item, block) => {
+      const type = String(block.type || '');
+      const data = block.data_obj && typeof block.data_obj === 'object' ? block.data_obj : parseBlockJson(block.data || '');
+      const isVisible = asBoolean(block.is_visible);
+      item.dataset.id = String(block.id || '');
+      item.dataset.type = type;
+      item.dataset.visible = isVisible ? '1' : '0';
+      item.dataset.order = String(block.order_index || 0);
+      item.dataset.json = encodeAttr(JSON.stringify(data || {}));
+      item.classList.toggle('is-hidden-link', !isVisible);
+
+      const titleNode = $('.link-admin-title', item);
+      if (titleNode) titleNode.textContent = toDisplayType(type);
+
+      const summaryNode = $('.link-admin-url', item);
+      if (summaryNode) {
+        summaryNode.textContent = block.summary || blockSummary(type, data);
+      }
+
+      const typePill = $('.link-pill', item);
+      if (typePill) typePill.textContent = type;
+
+      const toggleBtn = $('[data-action="toggle"]', item);
+      if (toggleBtn) toggleBtn.textContent = isVisible ? 'Hide' : 'Show';
+    };
+
+    const createBlockItem = block => {
+      const article = document.createElement('article');
+      article.className = 'link-admin-item';
+      article.draggable = true;
+      article.innerHTML = `
+        <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">&#8801;</button>
+        <div class="link-admin-main">
+          <div class="link-admin-title"></div>
+          <div class="link-admin-url"></div>
+        </div>
+        <div class="link-admin-meta">
+          <span class="order-badge">#0</span>
+          <span class="link-pill"></span>
+        </div>
+        <div class="link-admin-actions">
+          <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
+          <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility">Hide</button>
+          <button type="button" class="icon-action danger" data-action="delete" title="Delete block">Del</button>
+        </div>
+      `;
+      setBlockItem(article, block);
+      return article;
+    };
+
+    const openCreateModal = event => {
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
+      if (modalTitle) modalTitle.textContent = 'Create Block';
+      resetModalFields();
+      modal.open('block');
+      headingTextEl?.focus();
+    };
+
+    const openEditModal = item => {
+      const data = parseBlockJson(item.dataset.json);
+      if (modalTitle) modalTitle.textContent = 'Edit Block';
+      idEl.value = item.dataset.id || '';
+      typeEl.value = item.dataset.type || 'heading';
+      visibleEl.checked = item.dataset.visible !== '0';
+
+      if (headingTextEl) headingTextEl.value = String(data.text || '');
+      if (headingLevelEl) headingLevelEl.value = String(data.level || 'h2');
+      if (richHtmlEl) richHtmlEl.value = String(data.html || '');
+      if (buttonLabelEl) buttonLabelEl.value = String(data.label || '');
+      if (buttonUrlEl) buttonUrlEl.value = String(data.url || '');
+      if (buttonStyleEl) buttonStyleEl.value = String(data.style || 'solid');
+      if (buttonNewTabEl) buttonNewTabEl.checked = data.new_tab !== 0;
+      if (imageSrcEl) imageSrcEl.value = String(data.src || '');
+      if (imageAltEl) imageAltEl.value = String(data.alt || '');
+      if (imageCaptionEl) imageCaptionEl.value = String(data.caption || '');
+      if (embedTitleEl) embedTitleEl.value = String(data.title || '');
+      if (embedHtmlEl) embedHtmlEl.value = String(data.embed_html || '');
+
+      setTypeVisibility(typeEl.value || 'heading');
+      modal.open('block');
+      const firstInput = $('input, textarea, select:not([disabled])', form);
+      firstInput?.focus();
+    };
+
+    const persistOrder = async (showSuccess = true) => {
+      const ids = $$('.link-admin-item', list).map(item => Number(item.dataset.id)).filter(Number.isInteger);
+      if (!ids.length) return;
+      await postUrlEncoded('/admin/block/reorder', {
+        _csrf: csrfToken,
+        ids
+      });
+      syncOrderBadges();
+      if (showSuccess) showToast('Block order saved');
+    };
+
+    createBtn.addEventListener('click', openCreateModal);
+    typeEl?.addEventListener('change', () => setTypeVisibility(typeEl.value || 'heading'));
+
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const id = Number(idEl.value || 0);
+      const existing = id > 0 ? $(`.link-admin-item[data-id="${id}"]`, list) : null;
+      const orderIndex = existing ? Number(existing.dataset.order || 0) || 1 : $$('.link-admin-item', list).length + 1;
+
+      const payload = {
+        _csrf: csrfToken,
+        id,
+        page_id: 1,
+        type: typeEl.value,
+        is_visible: visibleEl.checked ? 1 : 0,
+        order_index: orderIndex,
+        heading_text: headingTextEl?.value || '',
+        heading_level: headingLevelEl?.value || 'h2',
+        rich_html: richHtmlEl?.value || '',
+        button_label: buttonLabelEl?.value || '',
+        button_url: buttonUrlEl?.value || '',
+        button_style: buttonStyleEl?.value || 'solid',
+        button_new_tab: buttonNewTabEl?.checked ? 1 : 0,
+        image_src: imageSrcEl?.value || '',
+        image_alt: imageAltEl?.value || '',
+        image_caption: imageCaptionEl?.value || '',
+        embed_title: embedTitleEl?.value || '',
+        embed_html: embedHtmlEl?.value || ''
+      };
+
+      try {
+        const result = await postUrlEncoded('/admin/block', payload);
+        if (!result.block) throw new Error('Block was not returned from server');
+
+        const targetId = Number(result.block.id || 0);
+        let item = targetId > 0 ? $(`.link-admin-item[data-id="${targetId}"]`, list) : null;
+        if (!item && id > 0) item = existing;
+
+        if (item) {
+          setBlockItem(item, result.block);
+        } else {
+          item = createBlockItem(result.block);
+          list.appendChild(item);
+        }
+
+        syncOrderBadges();
+        modal.close();
+        showToast(result.message || 'Block saved');
+      } catch (error) {
+        showToast(error.message || 'Failed to save block', 'error');
+      }
+    });
+
+    list.addEventListener('click', async event => {
+      const actionBtn = event.target.closest('[data-action]');
+      if (!actionBtn) return;
+      const action = actionBtn.dataset.action;
+      if (action === 'drag') return;
+
+      const item = actionBtn.closest('.link-admin-item');
+      if (!item) return;
+      const id = Number(item.dataset.id || 0);
+      if (!id) return;
+
+      try {
+        if (action === 'edit') {
+          openEditModal(item);
+          return;
+        }
+
+        if (action === 'toggle') {
+          const nextVisible = item.dataset.visible === '1' ? 0 : 1;
+          const result = await postUrlEncoded('/admin/block/toggle', {
+            _csrf: csrfToken,
+            id,
+            is_visible: nextVisible
+          });
+          if (result.block) {
+            setBlockItem(item, result.block);
+            showToast(result.message || 'Block updated');
+          }
+          return;
+        }
+
+        if (action === 'delete') {
+          if (!window.confirm(`Delete ${toDisplayType(item.dataset.type)} block?`)) return;
+          await postUrlEncoded('/admin/block/delete', { _csrf: csrfToken, id });
+          item.remove();
+          syncOrderBadges();
+          if ($$('.link-admin-item', list).length) await persistOrder(false);
+          showToast('Block deleted');
+        }
+      } catch (error) {
+        showToast(error.message || 'Failed to update block', 'error');
+      }
+    });
+
+    list.addEventListener('pointerdown', event => {
+      const handle = event.target.closest('.drag-handle');
+      if (!handle) return;
+      const item = handle.closest('.link-admin-item');
+      dragArmedId = item?.dataset.id || null;
+    });
+
+    list.addEventListener('dragstart', event => {
+      const item = event.target.closest('.link-admin-item');
+      if (!item) return;
+      if (!dragArmedId || dragArmedId !== item.dataset.id) {
+        event.preventDefault();
+        return;
+      }
+
+      item.classList.add('dragging');
+      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+    });
+
+    list.addEventListener('dragover', event => {
+      event.preventDefault();
+      const dragging = $('.link-admin-item.dragging', list);
+      if (!dragging) return;
+
+      const afterElement = getDragAfterElement(list, event.clientY);
+      if (!afterElement) list.appendChild(dragging);
+      else list.insertBefore(dragging, afterElement);
+    });
+
+    list.addEventListener('dragend', async event => {
+      const item = event.target.closest('.link-admin-item');
+      if (!item) return;
+      item.classList.remove('dragging');
+      dragArmedId = null;
+
+      try {
+        await persistOrder();
+      } catch (error) {
+        showToast(error.message || 'Failed to save order', 'error');
+      }
+    });
+
+    resetModalFields();
+    syncOrderBadges();
+  }
+
   function setupEmbedsManager(modal) {
     const list = $('#embeds-admin-list');
     const createBtn = $('#embed-create-btn');
@@ -1309,6 +1639,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSettingsSave();
   setupLivePreview();
   setupLinksManager(modal, utmBuilder);
+  setupBlocksManager(modal);
   setupEmbedsManager(modal);
   setupRedirectsManager(modal, utmBuilder);
 });

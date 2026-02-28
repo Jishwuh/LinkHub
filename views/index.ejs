@@ -94,28 +94,92 @@
       </div>
     </div>
 
-    <main class="links">
-      <% links.forEach(l => { %>
-        <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
-          <% if (l.icon_key) { %>
-            <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
-            <% } %>
-              <span class="label"><%= l.title %></span>
-              <span class="link-arrow" aria-hidden="true">↗</span>
-        </a>
-        <% }) %>
-    </main>
+    <% if (blocks && blocks.length) { %>
+      <section class="custom-blocks">
+        <% blocks.forEach(b => { %>
+          <% if (b.type === 'heading') { %>
+            <article class="block block-heading">
+              <% if (b.data_obj.level === 'h1') { %>
+                <h1><%= b.data_obj.text %></h1>
+              <% } else if (b.data_obj.level === 'h3') { %>
+                <h3><%= b.data_obj.text %></h3>
+              <% } else { %>
+                <h2><%= b.data_obj.text %></h2>
+              <% } %>
+            </article>
+          <% } %>
 
-    <% if (embeds && embeds.length) { %>
-      <section class="live-embeds">
-        <% embeds.forEach(e => { if (!e.is_visible) return; %>
-          <article class="card">
-            <h3><%= e.title %></h3>
-            <div class="ratio"><%- e.embed_html %></div>
-          </article>
-          <% }) %>
+          <% if (b.type === 'rich_text') { %>
+            <article class="block block-richtext card">
+              <div class="block-richtext-content"><%- b.data_obj.html %></div>
+            </article>
+          <% } %>
+
+          <% if (b.type === 'button_link') { %>
+            <a
+              class="block block-button-link link-card block-btn-<%= b.data_obj.style %>"
+              href="<%= b.data_obj.url %>"
+              <%= b.data_obj.new_tab ? 'target="_blank" rel="noopener noreferrer"' : '' %>>
+              <span class="label"><%= b.data_obj.label %></span>
+              <span class="link-arrow" aria-hidden="true">↗</span>
+            </a>
+          <% } %>
+
+          <% if (b.type === 'links_cluster') { %>
+            <section class="block block-links-cluster">
+              <div class="links">
+                <% links.forEach(l => { %>
+                  <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
+                    <% if (l.icon_key) { %>
+                      <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
+                    <% } %>
+                    <span class="label"><%= l.title %></span>
+                    <span class="link-arrow" aria-hidden="true">↗</span>
+                  </a>
+                <% }) %>
+              </div>
+            </section>
+          <% } %>
+
+          <% if (b.type === 'image') { %>
+            <figure class="block block-image card">
+              <img src="<%= b.data_obj.src %>" alt="<%= b.data_obj.alt || '' %>" loading="lazy">
+              <% if (b.data_obj.caption) { %><figcaption><%= b.data_obj.caption %></figcaption><% } %>
+            </figure>
+          <% } %>
+
+          <% if (b.type === 'embed') { %>
+            <article class="block block-embed card">
+              <% if (b.data_obj.title) { %><h3><%= b.data_obj.title %></h3><% } %>
+              <div class="ratio"><%- b.data_obj.embed_html %></div>
+            </article>
+          <% } %>
+        <% }) %>
       </section>
+    <% } else { %>
+      <main class="links">
+        <% links.forEach(l => { %>
+          <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
+            <% if (l.icon_key) { %>
+              <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
+              <% } %>
+                <span class="label"><%= l.title %></span>
+                <span class="link-arrow" aria-hidden="true">↗</span>
+          </a>
+          <% }) %>
+      </main>
+
+      <% if (embeds && embeds.length) { %>
+        <section class="live-embeds">
+          <% embeds.forEach(e => { if (!e.is_visible) return; %>
+            <article class="card">
+              <h3><%= e.title %></h3>
+              <div class="ratio"><%- e.embed_html %></div>
+            </article>
+            <% }) %>
+        </section>
       <% } %>
+    <% } %>
 
         <footer class="footer"><%- footerHtml %></footer>
   </div>
