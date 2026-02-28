@@ -276,13 +276,15 @@
       </div>
     </form>
 
+    <section class="builder-shell">
+      <div class="builder-editor-column">
     <details class="admin-accordion" open>
       <summary>
         <span>Links</span>
         <button type="button" class="btn-secondary create-new-btn" id="link-create-btn">Create New</button>
       </summary>
       <section class="card section-card">
-        <div class="links-help muted">Drag using the handle to reorder. Hover color chips to view exact hex.</div>
+        <div class="links-help muted">Drag using the handle to reorder. Click title or URL to inline edit.</div>
         <div id="links-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
           <% links.forEach((l, idx) => { %>
             <article
@@ -297,8 +299,8 @@
               data-visible="<%= l.is_visible ? '1' : '0' %>">
               <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
               <div class="link-admin-main">
-                <div class="link-admin-title"><%= l.title %></div>
-                <a class="link-admin-url" href="<%= l.url %>" target="_blank" rel="noopener noreferrer"><%= l.url %></a>
+                <div class="link-admin-title inline-editable is-editable" data-inline-field="title" tabindex="0" title="Click to edit title"><%= l.title %></div>
+                <a class="link-admin-url inline-editable is-editable" data-inline-field="url" href="<%= l.url %>" target="_blank" rel="noopener noreferrer" title="Click to edit URL (Ctrl/Cmd+click to open)"><%= l.url %></a>
               </div>
               <div class="link-admin-meta">
                 <span class="order-badge" title="Order">#<%= idx + 1 %></span>
@@ -323,7 +325,7 @@
         <button type="button" class="btn-secondary create-new-btn" id="block-create-btn">Create New</button>
       </summary>
       <section class="card section-card">
-        <div class="links-help muted">Build your public page in order using heading, rich text, button, image, and embed blocks.</div>
+        <div class="links-help muted">Build your page in order. Click editable title/details to inline edit common text, labels, and URLs.</div>
         <div id="blocks-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
           <% blocks.forEach((b, idx) => { %>
             <article
@@ -336,8 +338,8 @@
               data-visible="<%= b.is_visible ? '1' : '0' %>">
               <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
               <div class="link-admin-main">
-                <div class="link-admin-title"><%= b.type.replace('_', ' ') %></div>
-                <div class="link-admin-url"><%= b.summary %></div>
+                <div class="link-admin-title inline-editable" data-inline-field="" tabindex="0"><%= b.type.replace('_', ' ') %></div>
+                <div class="link-admin-url inline-editable" data-inline-field="" tabindex="0"><%= b.summary %></div>
               </div>
               <div class="link-admin-meta">
                 <span class="order-badge" title="Order">#<%= idx + 1 %></span>
@@ -353,42 +355,22 @@
         </div>
       </section>
     </details>
+      </div>
 
-    <details class="admin-accordion">
-      <summary>
-        <span>Custom Embeds</span>
-        <button type="button" class="btn-secondary create-new-btn" id="embed-create-btn">Create New</button>
-      </summary>
-      <section class="card section-card">
-        <div class="links-help muted">Drag to reorder embeds. Toggle visibility without leaving this view.</div>
-        <div id="embeds-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
-          <% embeds.forEach((e, idx) => { %>
-            <article
-              class="link-admin-item <%= e.is_visible ? '' : 'is-hidden-link' %>"
-              draggable="true"
-              data-id="<%= e.id %>"
-              data-title="<%= e.title %>"
-              data-html="<%= safeJsonForAttr(e.embed_html) %>"
-              data-order="<%= e.order_index %>"
-              data-visible="<%= e.is_visible ? '1' : '0' %>">
-              <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
-              <div class="link-admin-main">
-                <div class="link-admin-title"><%= e.title %></div>
-                <div class="link-admin-url">Embed block</div>
-              </div>
-              <div class="link-admin-meta">
-                <span class="order-badge" title="Order">#<%= idx + 1 %></span>
-              </div>
-              <div class="link-admin-actions">
-                <button type="button" class="icon-action" data-action="edit" title="Edit embed">Edit</button>
-                <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= e.is_visible ? 'Hide' : 'Show' %></button>
-                <button type="button" class="icon-action danger" data-action="delete" title="Delete embed">Del</button>
-              </div>
-            </article>
-          <% }) %>
+      <aside class="builder-preview-column">
+        <div class="builder-preview-card">
+          <h3>Builder Live Preview</h3>
+          <p class="muted small">Combined preview of current blocks and links. Updates instantly while editing.</p>
+          <div id="builder-live-preview" class="builder-live-preview">
+            <div class="builder-preview-header">
+              <div class="builder-preview-handle" id="builder-preview-handle"><%= settings.handle || '@handle' %></div>
+              <div class="builder-preview-name" id="builder-preview-name"><%= settings.display_name || 'Display Name' %></div>
+            </div>
+            <div id="builder-preview-content" class="builder-preview-content"></div>
+          </div>
         </div>
-      </section>
-    </details>
+      </aside>
+    </section>
 
     <details class="admin-accordion">
       <summary>
@@ -786,30 +768,6 @@
           <p class="modal-hint">Only fields for the selected block type are shown and submitted.</p>
           <div class="modal-actions">
             <button type="submit">Save Block</button>
-            <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
-          </div>
-        </form>
-      </section>
-
-      <section id="embed-modal" class="modal-card" hidden>
-        <div class="modal-header">
-          <h3 id="embed-modal-title">Create Embed</h3>
-          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
-        </div>
-        <form id="embed-modal-form" class="modal-form">
-          <input type="hidden" name="id" id="embed-modal-id">
-          <label class="modal-field">
-            <span class="modal-label">Title</span>
-            <input name="title" id="embed-modal-title-input" required>
-          </label>
-          <label class="modal-field">
-            <span class="modal-label">Embed HTML</span>
-            <textarea name="embed_html" id="embed-modal-html" rows="6" required></textarea>
-          </label>
-          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="embed-modal-visible" checked> Visible</label>
-          <p class="modal-hint">Only trusted HTTPS iframe embeds are allowed (YouTube, Twitch, TikTok, Spotify).</p>
-          <div class="modal-actions">
-            <button type="submit">Save Embed</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
           </div>
         </form>

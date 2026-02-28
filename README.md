@@ -22,12 +22,12 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Context tooltips for advanced controls
 - No-refresh admin workflow:
   - Settings save via AJAX with toast confirmation
-  - Link/Embed/Redirect create, edit, delete, toggle, and reorder without page reload
+  - Link/Block/Redirect create, edit, delete, toggle, and reorder without page reload
 - Modal-based editing:
   - Replaced inline create/edit fields with `Create New` + `Edit` modals
-  - Consistent modal UX for Links, Embeds, and Redirects
+  - Consistent modal UX for Links, Blocks, and Redirects
 - Better list management UX:
-  - Drag-and-drop reordering for links and embeds
+  - Drag-and-drop reordering for links and blocks
   - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
   - Per-item order badges and clearer visibility state
 - Full analytics upgrade:

@@ -330,7 +330,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const modals = {
       link: $('#link-modal', overlay || document),
       block: $('#block-modal', overlay || document),
-      embed: $('#embed-modal', overlay || document),
       redirect: $('#redirect-modal', overlay || document),
       utm: $('#utm-modal', overlay || document)
     };
@@ -394,6 +393,201 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     return closest;
+  }
+
+  function setupBuilderPreview() {
+    const previewRoot = $('#builder-live-preview');
+    const contentEl = $('#builder-preview-content');
+    const handleEl = $('#builder-preview-handle');
+    const nameEl = $('#builder-preview-name');
+    const linksList = $('#links-admin-list');
+    const blocksList = $('#blocks-admin-list');
+    const settingsForm = $('#settings-form');
+    if (!previewRoot || !contentEl || !linksList || !blocksList) {
+      return { refresh: () => {} };
+    }
+
+    const handleInput = $('[name="handle"]', settingsForm || document);
+    const displayNameInput = $('[name="display_name"]', settingsForm || document);
+    const themeColorInput = $('[name="theme_color"]', settingsForm || document);
+    const layoutInput = $('[name="link_layout"]', settingsForm || document);
+    const buttonStyleInput = $('[name="button_style"]', settingsForm || document);
+
+    const parseBlockJson = raw => {
+      if (!raw) return {};
+      try {
+        const parsed = JSON.parse(decodeAttr(raw));
+        return parsed && typeof parsed === 'object' ? parsed : {};
+      } catch {
+        return {};
+      }
+    };
+
+    const stripHtml = raw =>
+      String(raw || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const getVisibleLinks = () =>
+      $$('.link-admin-item', linksList)
+        .filter(item => item.dataset.visible === '1')
+        .map(item => ({
+          title: item.dataset.title || 'Link',
+          url: item.dataset.url || '#',
+          color: normalizeHex(item.dataset.color, '#2a2a2a')
+        }));
+
+    const makeBlock = label => {
+      const block = document.createElement('article');
+      block.className = 'builder-preview-block';
+
+      const heading = document.createElement('strong');
+      heading.textContent = label;
+      block.appendChild(heading);
+      return block;
+    };
+
+    const renderLinksCluster = links => {
+      const block = makeBlock('Links Cluster');
+      const wrap = document.createElement('div');
+      const layout = String(layoutInput?.value || 'list').trim();
+      const buttonStyle = String(buttonStyleInput?.value || 'rounded').trim();
+      wrap.className = `builder-preview-links-wrap builder-layout-${layout}`;
+
+      if (!links.length) {
+        const empty = document.createElement('div');
+        empty.className = 'builder-preview-empty';
+        empty.textContent = 'No visible links yet.';
+        block.appendChild(empty);
+        return block;
+      }
+
+      links.forEach(link => {
+        const anchor = document.createElement('a');
+        anchor.className = `builder-preview-link builder-button-${buttonStyle}`;
+        anchor.href = link.url || '#';
+        anchor.target = '_blank';
+        anchor.rel = 'noopener noreferrer';
+        anchor.style.backgroundColor = link.color;
+        anchor.title = link.url;
+
+        if (layout === 'table') {
+          const label = document.createElement('span');
+          label.textContent = link.title;
+          const arrow = document.createElement('span');
+          arrow.textContent = '↗';
+          anchor.appendChild(label);
+          anchor.appendChild(arrow);
+        } else {
+          anchor.textContent = link.title;
+        }
+
+        wrap.appendChild(anchor);
+      });
+
+      block.appendChild(wrap);
+      return block;
+    };
+
+    const render = () => {
+      const handle = String(handleInput?.value || '').trim();
+      const displayName = String(displayNameInput?.value || '').trim();
+      if (handleEl) handleEl.textContent = handle ? (handle.startsWith('@') ? handle : `@${handle}`) : '@handle';
+      if (nameEl) nameEl.textContent = displayName || 'Display Name';
+      previewRoot.style.setProperty('--preview-accent', normalizeHex(themeColorInput?.value, '#8ab4ff'));
+
+      const links = getVisibleLinks();
+      const visibleBlocks = $$('.link-admin-item', blocksList).filter(item => item.dataset.visible === '1');
+
+      contentEl.innerHTML = '';
+      if (!visibleBlocks.length) {
+        contentEl.appendChild(renderLinksCluster(links));
+        return;
+      }
+
+      let hasLinksCluster = false;
+      visibleBlocks.forEach(item => {
+        const type = String(item.dataset.type || '');
+        const data = parseBlockJson(item.dataset.json || '');
+
+        if (type === 'links_cluster') {
+          hasLinksCluster = true;
+          contentEl.appendChild(renderLinksCluster(links));
+          return;
+        }
+
+        if (type === 'heading') {
+          const block = makeBlock('Heading');
+          block.append(String(data.text || 'Heading text'));
+          contentEl.appendChild(block);
+          return;
+        }
+
+        if (type === 'rich_text') {
+          const block = makeBlock('Rich Text');
+          block.append(stripHtml(data.html || '') || 'Rich text content');
+          contentEl.appendChild(block);
+          return;
+        }
+
+        if (type === 'button_link') {
+          const block = makeBlock('Button Link');
+          const button = document.createElement('a');
+          button.className = 'builder-preview-link builder-button-solid';
+          button.href = String(data.url || '#');
+          button.target = data.new_tab === 0 ? '_self' : '_blank';
+          button.rel = 'noopener noreferrer';
+          button.textContent = String(data.label || 'Button label');
+          block.appendChild(button);
+          contentEl.appendChild(block);
+          return;
+        }
+
+        if (type === 'image') {
+          const block = makeBlock('Image');
+          block.append(String(data.caption || data.alt || data.src || 'Image block'));
+          contentEl.appendChild(block);
+          return;
+        }
+
+        if (type === 'embed') {
+          const block = makeBlock('Embed');
+          block.append(String(data.title || 'Embed block'));
+          contentEl.appendChild(block);
+          return;
+        }
+
+        const block = makeBlock('Block');
+        block.append(String(type || 'Unknown block'));
+        contentEl.appendChild(block);
+      });
+
+      if (links.length && !hasLinksCluster) {
+        const info = document.createElement('div');
+        info.className = 'builder-preview-empty';
+        info.textContent = 'Links are not currently placed. Add a Links Cluster block to show them on-page.';
+        contentEl.appendChild(info);
+      }
+    };
+
+    const observerConfig = {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-visible', 'data-title', 'data-url', 'data-color', 'data-type', 'data-json', 'data-order']
+    };
+
+    const linksObserver = new MutationObserver(() => render());
+    const blocksObserver = new MutationObserver(() => render());
+    linksObserver.observe(linksList, observerConfig);
+    blocksObserver.observe(blocksList, observerConfig);
+
+    settingsForm?.addEventListener('input', render);
+    settingsForm?.addEventListener('change', render);
+
+    render();
+    return { refresh: render };
   }
 
   function setupUtmBuilder(modal) {
@@ -593,6 +787,133 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
+    let activeInlineState = null;
+
+    const readLinkFromDataset = item => ({
+      id: Number(item.dataset.id || 0),
+      title: item.dataset.title || '',
+      url: item.dataset.url || '',
+      icon_key: item.dataset.icon || '',
+      color_hex: normalizeHex(item.dataset.color, '#2a2a2a'),
+      is_visible: item.dataset.visible === '1',
+      order_index: Number(item.dataset.order || 0) || 1
+    });
+
+    const buildSavePayload = (item, overrides = {}) => {
+      const current = readLinkFromDataset(item);
+      return {
+        _csrf: csrfToken,
+        id: current.id,
+        title: overrides.title ?? current.title,
+        url: overrides.url ?? current.url,
+        icon_key: overrides.icon_key ?? current.icon_key,
+        color_hex: normalizeHex(overrides.color_hex ?? current.color_hex, '#2a2a2a'),
+        is_visible: overrides.is_visible == null ? (current.is_visible ? 1 : 0) : asBoolean(overrides.is_visible) ? 1 : 0,
+        order_index: Number(overrides.order_index || current.order_index || 1)
+      };
+    };
+
+    const cancelInlineEdit = () => {
+      if (!activeInlineState) return;
+      const { item } = activeInlineState;
+      setLinkItem(item, readLinkFromDataset(item));
+      activeInlineState = null;
+    };
+
+    const startInlineEdit = (item, target, field) => {
+      if (!item || !target) return;
+      if (field !== 'title' && field !== 'url') return;
+
+      cancelInlineEdit();
+      const initialValue = field === 'title' ? item.dataset.title || '' : item.dataset.url || '';
+
+      target.classList.add('inline-edit-active');
+      target.innerHTML = '';
+
+      const shell = document.createElement('div');
+      shell.className = 'inline-edit-shell';
+
+      const input = document.createElement('input');
+      input.type = field === 'url' ? 'url' : 'text';
+      input.value = initialValue;
+      input.required = true;
+      if (field === 'url') input.placeholder = 'https://...';
+      shell.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'inline-edit-actions';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'inline-edit-btn save';
+      saveBtn.textContent = 'Save';
+      actions.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'inline-edit-btn cancel';
+      cancelBtn.textContent = 'Cancel';
+      actions.appendChild(cancelBtn);
+
+      shell.appendChild(actions);
+      target.appendChild(shell);
+
+      const closeEditor = () => {
+        if (!activeInlineState) return;
+        const state = activeInlineState;
+        activeInlineState = null;
+        state.target.classList.remove('inline-edit-active');
+      };
+
+      const save = async () => {
+        const nextValue = String(input.value || '').trim();
+        if (!nextValue) {
+          showToast('Value cannot be empty', 'error');
+          input.focus();
+          return;
+        }
+
+        const payload = buildSavePayload(item, { [field]: nextValue });
+        try {
+          saveBtn.disabled = true;
+          const result = await postUrlEncoded('/admin/link', payload);
+          if (!result.link) throw new Error('Link was not returned from server');
+          closeEditor();
+          setLinkItem(item, result.link);
+          showToast('Link updated');
+        } catch (error) {
+          showToast(error.message || 'Failed to save inline edit', 'error');
+          saveBtn.disabled = false;
+          input.focus();
+        }
+      };
+
+      const cancel = () => {
+        closeEditor();
+        setLinkItem(item, readLinkFromDataset(item));
+      };
+
+      saveBtn.addEventListener('click', () => {
+        void save();
+      });
+      cancelBtn.addEventListener('click', cancel);
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          void save();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      });
+
+      activeInlineState = { item, target };
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    };
+
     const setLinkItem = (item, link) => {
       const isVisible = asBoolean(link.is_visible);
       item.dataset.id = String(link.id || '');
@@ -606,12 +927,20 @@ document.addEventListener('DOMContentLoaded', () => {
       item.classList.toggle('is-hidden-link', !isVisible);
 
       const titleNode = $('.link-admin-title', item);
-      if (titleNode) titleNode.textContent = link.title || '';
+      if (titleNode) {
+        titleNode.textContent = link.title || '';
+        titleNode.classList.add('inline-editable', 'is-editable');
+        titleNode.dataset.inlineField = 'title';
+        titleNode.title = 'Click to edit title';
+      }
 
       const urlNode = $('.link-admin-url', item);
       if (urlNode) {
         urlNode.textContent = link.url || '';
         urlNode.href = link.url || '#';
+        urlNode.classList.add('inline-editable', 'is-editable');
+        urlNode.dataset.inlineField = 'url';
+        urlNode.title = 'Click to edit URL (Ctrl/Cmd+click to open)';
       }
 
       const iconPill = $('.link-pill', item);
@@ -641,8 +970,8 @@ document.addEventListener('DOMContentLoaded', () => {
       article.innerHTML = `
         <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">&#8801;</button>
         <div class="link-admin-main">
-          <div class="link-admin-title"></div>
-          <a class="link-admin-url" target="_blank" rel="noopener noreferrer"></a>
+          <div class="link-admin-title inline-editable is-editable" data-inline-field="title" tabindex="0" title="Click to edit title"></div>
+          <a class="link-admin-url inline-editable is-editable" data-inline-field="url" target="_blank" rel="noopener noreferrer" title="Click to edit URL (Ctrl/Cmd+click to open)"></a>
         </div>
         <div class="link-admin-meta">
           <span class="order-badge">#0</span>
@@ -665,6 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         event.stopPropagation();
       }
+      cancelInlineEdit();
 
       if (modalTitle) modalTitle.textContent = 'Create Link';
       idEl.value = '';
@@ -680,6 +1010,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openEditModal = item => {
+      cancelInlineEdit();
       if (modalTitle) modalTitle.textContent = 'Edit Link';
       idEl.value = item.dataset.id || '';
       titleEl.value = item.dataset.title || '';
@@ -757,6 +1088,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const item = actionBtn.closest('.link-admin-item');
       if (!item) return;
+      cancelInlineEdit();
 
       const id = Number(item.dataset.id || 0);
       if (!id) return;
@@ -799,9 +1131,38 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    list.addEventListener('click', event => {
+      const editable = event.target.closest('.inline-editable.is-editable');
+      if (!editable || !list.contains(editable)) return;
+      if (event.target.closest('.inline-edit-shell')) return;
+
+      if (editable.matches('a') && (event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+
+      const item = editable.closest('.link-admin-item');
+      if (!item) return;
+
+      const field = editable.dataset.inlineField || '';
+      startInlineEdit(item, editable, field);
+    });
+
+    list.addEventListener('keydown', event => {
+      const editable = event.target.closest('.inline-editable.is-editable');
+      if (!editable || !list.contains(editable)) return;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (editable.classList.contains('inline-edit-active')) return;
+      event.preventDefault();
+
+      const item = editable.closest('.link-admin-item');
+      if (!item) return;
+      const field = editable.dataset.inlineField || '';
+      startInlineEdit(item, editable, field);
+    });
+
     list.addEventListener('pointerdown', event => {
       const handle = event.target.closest('.drag-handle');
       if (!handle) return;
+      cancelInlineEdit();
       const item = handle.closest('.link-admin-item');
       dragArmedId = item?.dataset.id || null;
     });
@@ -916,6 +1277,63 @@ document.addEventListener('DOMContentLoaded', () => {
       return 'Block';
     };
 
+    const inlineConfigForBlock = (type, data) => {
+      if (type === 'heading') {
+        return {
+          titleText: String(data.text || '').trim() || 'Heading text',
+          summaryText: `${String(data.level || 'h2').toUpperCase()} heading`,
+          titleField: 'heading_text',
+          summaryField: ''
+        };
+      }
+      if (type === 'button_link') {
+        return {
+          titleText: String(data.label || '').trim() || 'Button label',
+          summaryText: String(data.url || '').trim() || 'URL not set',
+          titleField: 'button_label',
+          summaryField: 'button_url'
+        };
+      }
+      if (type === 'image') {
+        return {
+          titleText: String(data.caption || data.alt || '').trim() || 'Image block',
+          summaryText: String(data.src || '').trim() || 'Image URL not set',
+          titleField: 'image_caption',
+          summaryField: 'image_src'
+        };
+      }
+      if (type === 'embed') {
+        return {
+          titleText: String(data.title || '').trim() || 'Embed block',
+          summaryText: 'Embed block',
+          titleField: 'embed_title',
+          summaryField: ''
+        };
+      }
+      if (type === 'rich_text') {
+        return {
+          titleText: 'Rich text',
+          summaryText: blockSummary(type, data),
+          titleField: '',
+          summaryField: ''
+        };
+      }
+      if (type === 'links_cluster') {
+        return {
+          titleText: 'Links Cluster',
+          summaryText: blockSummary(type, data),
+          titleField: '',
+          summaryField: ''
+        };
+      }
+      return {
+        titleText: toDisplayType(type),
+        summaryText: blockSummary(type, data),
+        titleField: '',
+        summaryField: ''
+      };
+    };
+
     const setTypeVisibility = selectedType => {
       typeGroups.forEach(group => {
         const isVisible = group.dataset.blockType === selectedType;
@@ -955,9 +1373,158 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     };
 
+    let activeInlineState = null;
+
+    const blockFromDataset = item => {
+      const type = item.dataset.type || '';
+      const dataObj = parseBlockJson(item.dataset.json || '');
+      return {
+        id: Number(item.dataset.id || 0),
+        type,
+        data_obj: dataObj,
+        order_index: Number(item.dataset.order || 0) || 1,
+        is_visible: item.dataset.visible === '1',
+        summary: blockSummary(type, dataObj)
+      };
+    };
+
+    const buildSavePayload = (item, overrides = {}) => {
+      const block = blockFromDataset(item);
+      const data = block.data_obj || {};
+      return {
+        _csrf: csrfToken,
+        id: block.id,
+        page_id: 1,
+        type: block.type,
+        is_visible: block.is_visible ? 1 : 0,
+        order_index: block.order_index,
+        heading_text: overrides.heading_text ?? data.text ?? '',
+        heading_level: overrides.heading_level ?? data.level ?? 'h2',
+        rich_html: overrides.rich_html ?? data.html ?? '',
+        button_label: overrides.button_label ?? data.label ?? '',
+        button_url: overrides.button_url ?? data.url ?? '',
+        button_style: overrides.button_style ?? data.style ?? 'solid',
+        button_new_tab: overrides.button_new_tab == null ? (data.new_tab === 0 ? 0 : 1) : asBoolean(overrides.button_new_tab) ? 1 : 0,
+        image_src: overrides.image_src ?? data.src ?? '',
+        image_alt: overrides.image_alt ?? data.alt ?? '',
+        image_caption: overrides.image_caption ?? data.caption ?? '',
+        embed_title: overrides.embed_title ?? data.title ?? '',
+        embed_html: overrides.embed_html ?? data.embed_html ?? ''
+      };
+    };
+
+    const cancelInlineEdit = () => {
+      if (!activeInlineState) return;
+      const { item } = activeInlineState;
+      setBlockItem(item, blockFromDataset(item));
+      activeInlineState = null;
+    };
+
+    const startInlineEdit = (item, target, field) => {
+      if (!field) return;
+      cancelInlineEdit();
+
+      const currentData = parseBlockJson(item.dataset.json || '');
+      const initialValue =
+        field === 'heading_text' ? String(currentData.text || '') :
+        field === 'button_label' ? String(currentData.label || '') :
+        field === 'button_url' ? String(currentData.url || '') :
+        field === 'image_caption' ? String(currentData.caption || '') :
+        field === 'image_src' ? String(currentData.src || '') :
+        field === 'embed_title' ? String(currentData.title || '') :
+        '';
+
+      target.classList.add('inline-edit-active');
+      target.innerHTML = '';
+
+      const shell = document.createElement('div');
+      shell.className = 'inline-edit-shell';
+
+      const input = document.createElement('input');
+      input.type = field.includes('url') || field === 'image_src' ? 'url' : 'text';
+      input.value = initialValue;
+      input.required = true;
+      if (input.type === 'url') input.placeholder = 'https://...';
+      shell.appendChild(input);
+
+      const actions = document.createElement('div');
+      actions.className = 'inline-edit-actions';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'inline-edit-btn save';
+      saveBtn.textContent = 'Save';
+      actions.appendChild(saveBtn);
+
+      const cancelBtn = document.createElement('button');
+      cancelBtn.type = 'button';
+      cancelBtn.className = 'inline-edit-btn cancel';
+      cancelBtn.textContent = 'Cancel';
+      actions.appendChild(cancelBtn);
+
+      shell.appendChild(actions);
+      target.appendChild(shell);
+
+      const closeEditor = () => {
+        if (!activeInlineState) return;
+        const state = activeInlineState;
+        activeInlineState = null;
+        state.target.classList.remove('inline-edit-active');
+      };
+
+      const save = async () => {
+        const nextValue = String(input.value || '').trim();
+        if (!nextValue) {
+          showToast('Value cannot be empty', 'error');
+          input.focus();
+          return;
+        }
+
+        const payload = buildSavePayload(item, { [field]: nextValue });
+        try {
+          saveBtn.disabled = true;
+          const result = await postUrlEncoded('/admin/block', payload);
+          if (!result.block) throw new Error('Block was not returned from server');
+          closeEditor();
+          setBlockItem(item, result.block);
+          showToast('Block updated');
+        } catch (error) {
+          showToast(error.message || 'Failed to save inline edit', 'error');
+          saveBtn.disabled = false;
+          input.focus();
+        }
+      };
+
+      const cancel = () => {
+        closeEditor();
+        setBlockItem(item, blockFromDataset(item));
+      };
+
+      saveBtn.addEventListener('click', () => {
+        void save();
+      });
+      cancelBtn.addEventListener('click', cancel);
+      input.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          void save();
+        } else if (event.key === 'Escape') {
+          event.preventDefault();
+          cancel();
+        }
+      });
+
+      activeInlineState = { item, target };
+      window.setTimeout(() => {
+        input.focus();
+        input.select();
+      }, 0);
+    };
+
     const setBlockItem = (item, block) => {
       const type = String(block.type || '');
       const data = block.data_obj && typeof block.data_obj === 'object' ? block.data_obj : parseBlockJson(block.data || '');
+      const inlineConfig = inlineConfigForBlock(type, data);
       const isVisible = asBoolean(block.is_visible);
       item.dataset.id = String(block.id || '');
       item.dataset.type = type;
@@ -967,11 +1534,21 @@ document.addEventListener('DOMContentLoaded', () => {
       item.classList.toggle('is-hidden-link', !isVisible);
 
       const titleNode = $('.link-admin-title', item);
-      if (titleNode) titleNode.textContent = toDisplayType(type);
+      if (titleNode) {
+        titleNode.textContent = inlineConfig.titleText;
+        titleNode.classList.add('inline-editable');
+        titleNode.classList.toggle('is-editable', Boolean(inlineConfig.titleField));
+        titleNode.dataset.inlineField = inlineConfig.titleField || '';
+        titleNode.title = inlineConfig.titleField ? 'Click to edit' : '';
+      }
 
       const summaryNode = $('.link-admin-url', item);
       if (summaryNode) {
-        summaryNode.textContent = block.summary || blockSummary(type, data);
+        summaryNode.textContent = inlineConfig.summaryText || block.summary || blockSummary(type, data);
+        summaryNode.classList.add('inline-editable');
+        summaryNode.classList.toggle('is-editable', Boolean(inlineConfig.summaryField));
+        summaryNode.dataset.inlineField = inlineConfig.summaryField || '';
+        summaryNode.title = inlineConfig.summaryField ? 'Click to edit' : '';
       }
 
       const typePill = $('.link-pill', item);
@@ -988,8 +1565,8 @@ document.addEventListener('DOMContentLoaded', () => {
       article.innerHTML = `
         <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">&#8801;</button>
         <div class="link-admin-main">
-          <div class="link-admin-title"></div>
-          <div class="link-admin-url"></div>
+          <div class="link-admin-title inline-editable" data-inline-field="" tabindex="0"></div>
+          <div class="link-admin-url inline-editable" data-inline-field="" tabindex="0"></div>
         </div>
         <div class="link-admin-meta">
           <span class="order-badge">#0</span>
@@ -1010,6 +1587,7 @@ document.addEventListener('DOMContentLoaded', () => {
         event.preventDefault();
         event.stopPropagation();
       }
+      cancelInlineEdit();
       if (modalTitle) modalTitle.textContent = 'Create Block';
       resetModalFields();
       modal.open('block');
@@ -1017,6 +1595,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const openEditModal = item => {
+      cancelInlineEdit();
       const data = parseBlockJson(item.dataset.json);
       if (modalTitle) modalTitle.textContent = 'Edit Block';
       idEl.value = item.dataset.id || '';
@@ -1114,6 +1693,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const item = actionBtn.closest('.link-admin-item');
       if (!item) return;
+      cancelInlineEdit();
       const id = Number(item.dataset.id || 0);
       if (!id) return;
 
@@ -1150,9 +1730,35 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    list.addEventListener('click', event => {
+      const editable = event.target.closest('.inline-editable.is-editable');
+      if (!editable || !list.contains(editable)) return;
+      if (event.target.closest('.inline-edit-shell')) return;
+      event.preventDefault();
+
+      const item = editable.closest('.link-admin-item');
+      if (!item) return;
+      const field = editable.dataset.inlineField || '';
+      startInlineEdit(item, editable, field);
+    });
+
+    list.addEventListener('keydown', event => {
+      const editable = event.target.closest('.inline-editable.is-editable');
+      if (!editable || !list.contains(editable)) return;
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (editable.classList.contains('inline-edit-active')) return;
+      event.preventDefault();
+
+      const item = editable.closest('.link-admin-item');
+      if (!item) return;
+      const field = editable.dataset.inlineField || '';
+      startInlineEdit(item, editable, field);
+    });
+
     list.addEventListener('pointerdown', event => {
       const handle = event.target.closest('.drag-handle');
       if (!handle) return;
+      cancelInlineEdit();
       const item = handle.closest('.link-admin-item');
       dragArmedId = item?.dataset.id || null;
     });
@@ -1193,240 +1799,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     resetModalFields();
-    syncOrderBadges();
-  }
-
-  function setupEmbedsManager(modal) {
-    const list = $('#embeds-admin-list');
-    const createBtn = $('#embed-create-btn');
-    const form = $('#embed-modal-form');
-    if (!list || !createBtn || !form) return;
-
-    const modalTitle = $('#embed-modal-title');
-    const idEl = $('#embed-modal-id');
-    const titleEl = $('#embed-modal-title-input');
-    const htmlEl = $('#embed-modal-html');
-    const visibleEl = $('#embed-modal-visible');
-
-    let dragArmedId = null;
-
-    const syncOrderBadges = () => {
-      $$('.link-admin-item', list).forEach((item, idx) => {
-        item.dataset.order = String(idx + 1);
-        const badge = $('.order-badge', item);
-        if (badge) badge.textContent = `#${idx + 1}`;
-      });
-    };
-
-    const setEmbedItem = (item, embed) => {
-      const isVisible = asBoolean(embed.is_visible);
-      item.dataset.id = String(embed.id || '');
-      item.dataset.title = embed.title || '';
-      item.dataset.html = encodeAttr(embed.embed_html || '');
-      item.dataset.visible = isVisible ? '1' : '0';
-      if (embed.order_index != null) item.dataset.order = String(embed.order_index);
-
-      item.classList.toggle('is-hidden-link', !isVisible);
-
-      const titleNode = $('.link-admin-title', item);
-      if (titleNode) titleNode.textContent = embed.title || '';
-
-      const toggleBtn = $('[data-action="toggle"]', item);
-      if (toggleBtn) {
-        toggleBtn.textContent = isVisible ? 'Hide' : 'Show';
-        toggleBtn.title = isVisible ? 'Hide embed' : 'Show embed';
-      }
-    };
-
-    const createEmbedItem = embed => {
-      const article = document.createElement('article');
-      article.className = 'link-admin-item';
-      article.draggable = true;
-      article.innerHTML = `
-        <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">&#8801;</button>
-        <div class="link-admin-main">
-          <div class="link-admin-title"></div>
-          <div class="link-admin-url">Embed block</div>
-        </div>
-        <div class="link-admin-meta">
-          <span class="order-badge">#0</span>
-        </div>
-        <div class="link-admin-actions">
-          <button type="button" class="icon-action" data-action="edit" title="Edit embed">Edit</button>
-          <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility">Hide</button>
-          <button type="button" class="icon-action danger" data-action="delete" title="Delete embed">Del</button>
-        </div>
-      `;
-      setEmbedItem(article, embed);
-      return article;
-    };
-
-    const openCreateModal = event => {
-      if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-
-      if (modalTitle) modalTitle.textContent = 'Create Embed';
-      idEl.value = '';
-      titleEl.value = '';
-      htmlEl.value = '';
-      visibleEl.checked = true;
-      modal.open('embed');
-      titleEl.focus();
-    };
-
-    const openEditModal = item => {
-      if (modalTitle) modalTitle.textContent = 'Edit Embed';
-      idEl.value = item.dataset.id || '';
-      titleEl.value = item.dataset.title || '';
-      htmlEl.value = decodeAttr(item.dataset.html || '');
-      visibleEl.checked = item.dataset.visible !== '0';
-      modal.open('embed');
-      titleEl.focus();
-    };
-
-    const persistOrder = async (showSuccess = true) => {
-      const ids = $$('.link-admin-item', list).map(item => Number(item.dataset.id)).filter(Number.isInteger);
-      if (!ids.length) return;
-      await postUrlEncoded('/admin/embed/reorder', {
-        _csrf: csrfToken,
-        ids
-      });
-      syncOrderBadges();
-      if (showSuccess) showToast('Embed order saved');
-    };
-
-    createBtn.addEventListener('click', openCreateModal);
-
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-
-      const id = Number(idEl.value || 0);
-      const existing = id > 0 ? $(`.link-admin-item[data-id="${id}"]`, list) : null;
-      const orderIndex = existing ? Number(existing.dataset.order || 0) || 1 : $$('.link-admin-item', list).length + 1;
-
-      const payload = {
-        _csrf: csrfToken,
-        id,
-        title: titleEl.value,
-        embed_html: htmlEl.value,
-        is_visible: visibleEl.checked ? 1 : 0,
-        order_index: orderIndex
-      };
-
-      try {
-        const result = await postUrlEncoded('/admin/embed', payload);
-        if (!result.embed) throw new Error('Embed was not returned from server');
-
-        const targetId = Number(result.embed.id || 0);
-        let item = targetId > 0 ? $(`.link-admin-item[data-id="${targetId}"]`, list) : null;
-        if (!item && id > 0) item = existing;
-
-        if (item) {
-          setEmbedItem(item, result.embed);
-        } else {
-          item = createEmbedItem(result.embed);
-          list.appendChild(item);
-        }
-
-        syncOrderBadges();
-        modal.close();
-        showToast(result.message || 'Embed saved');
-      } catch (error) {
-        showToast(error.message || 'Failed to save embed', 'error');
-      }
-    });
-
-    list.addEventListener('click', async event => {
-      const actionBtn = event.target.closest('[data-action]');
-      if (!actionBtn) return;
-
-      const action = actionBtn.dataset.action;
-      if (action === 'drag') return;
-
-      const item = actionBtn.closest('.link-admin-item');
-      if (!item) return;
-
-      const id = Number(item.dataset.id || 0);
-      if (!id) return;
-
-      try {
-        if (action === 'edit') {
-          openEditModal(item);
-          return;
-        }
-
-        if (action === 'toggle') {
-          const nextVisible = item.dataset.visible === '1' ? 0 : 1;
-          const result = await postUrlEncoded('/admin/embed/toggle', {
-            _csrf: csrfToken,
-            id,
-            is_visible: nextVisible
-          });
-          if (result.embed) {
-            setEmbedItem(item, result.embed);
-            showToast(result.message || 'Embed updated');
-          }
-          return;
-        }
-
-        if (action === 'delete') {
-          if (!window.confirm(`Delete embed "${item.dataset.title || ''}"?`)) return;
-          await postUrlEncoded('/admin/embed/delete', { _csrf: csrfToken, id });
-          item.remove();
-          syncOrderBadges();
-          if ($$('.link-admin-item', list).length) await persistOrder(false);
-          showToast('Embed deleted');
-        }
-      } catch (error) {
-        showToast(error.message || 'Failed to update embed', 'error');
-      }
-    });
-
-    list.addEventListener('pointerdown', event => {
-      const handle = event.target.closest('.drag-handle');
-      if (!handle) return;
-      const item = handle.closest('.link-admin-item');
-      dragArmedId = item?.dataset.id || null;
-    });
-
-    list.addEventListener('dragstart', event => {
-      const item = event.target.closest('.link-admin-item');
-      if (!item) return;
-      if (!dragArmedId || dragArmedId !== item.dataset.id) {
-        event.preventDefault();
-        return;
-      }
-
-      item.classList.add('dragging');
-      if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
-    });
-
-    list.addEventListener('dragover', event => {
-      event.preventDefault();
-      const dragging = $('.link-admin-item.dragging', list);
-      if (!dragging) return;
-
-      const afterElement = getDragAfterElement(list, event.clientY);
-      if (!afterElement) list.appendChild(dragging);
-      else list.insertBefore(dragging, afterElement);
-    });
-
-    list.addEventListener('dragend', async event => {
-      const item = event.target.closest('.link-admin-item');
-      if (!item) return;
-
-      item.classList.remove('dragging');
-      dragArmedId = null;
-
-      try {
-        await persistOrder();
-      } catch (error) {
-        showToast(error.message || 'Failed to save order', 'error');
-      }
-    });
-
     syncOrderBadges();
   }
 
@@ -1638,8 +2010,8 @@ document.addEventListener('DOMContentLoaded', () => {
   setupThemeColorPreview();
   setupSettingsSave();
   setupLivePreview();
+  setupBuilderPreview();
   setupLinksManager(modal, utmBuilder);
   setupBlocksManager(modal);
-  setupEmbedsManager(modal);
   setupRedirectsManager(modal, utmBuilder);
 });

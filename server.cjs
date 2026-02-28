@@ -1434,8 +1434,6 @@ function createApp(passedConfig) {
       const settings = resolveUiSettings(await getSettingsMap());
       const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 ORDER BY order_index ASC, id ASC');
       const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
-      const embedsRaw = await q('SELECT * FROM embeds ORDER BY order_index ASC, id ASC');
-      const embeds = embedsRaw.map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }));
       const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
       const analytics = await getAnalyticsSnapshot(analyticsDays);
 
@@ -1455,7 +1453,6 @@ function createApp(passedConfig) {
         blocks,
         settings,
         csrfToken: req.session.csrfToken,
-        embeds,
         redirects,
         icons,
         analytics,

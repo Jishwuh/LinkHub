@@ -1,11 +1,11 @@
 ## Now (Highest impact)
 
-- [ ] **Per-link analytics**
-  - [ ] Track clicks per link (not just total visits)
-  - [ ] Show CTR (clicks / page views)
-  - [ ] Basic breakdowns: referrer, device, country, time of day
-  - [ ] Export analytics to CSV
-  - [ ] UTM builder + Copy tracked link button
+- [x] **Per-link analytics**
+  - [x] Track clicks per link (not just total visits)
+  - [x] Show CTR (clicks / page views)
+  - [x] Basic breakdowns: referrer, device, country, time of day
+  - [x] Export analytics to CSV
+  - [x] UTM builder + Copy tracked link button
 
 - [x] **Blocks system (beyond links + iframes)**
   - [x] Create a `blocks` table: `id, page_id, type, data(JSON), order, visible, created_at`
@@ -17,10 +17,10 @@
     - [x] Image
     - [x] Embed (iframe / YouTube / etc.)
 
-- [ ] **Admin builder improvements**
-  - [ ] Drag-and-drop reorder for links/blocks
-  - [ ] Split view: Admin editor + Live preview panel
-  - [ ] Inline edit (click to edit text, labels, URLs)
+- [x] **Admin builder improvements**
+  - [x] Drag-and-drop reorder for links/blocks
+  - [x] Split view: Admin editor + Live preview panel
+  - [x] Inline edit (click to edit text, labels, URLs)
 
 ---
 

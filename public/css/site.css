@@ -887,6 +887,144 @@ button,
   opacity: 1;
 }
 
+.builder-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+  margin-top: 14px;
+}
+
+.builder-editor-column {
+  min-width: 0;
+}
+
+.builder-editor-column .admin-accordion {
+  margin-top: 0;
+}
+
+.builder-editor-column .admin-accordion + .admin-accordion {
+  margin-top: 14px;
+}
+
+.builder-preview-column {
+  position: sticky;
+  top: 12px;
+  align-self: start;
+}
+
+.builder-preview-card {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+}
+
+.builder-live-preview {
+  margin-top: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 14px;
+  background: linear-gradient(160deg, rgba(24, 26, 33, 0.95), rgba(12, 14, 20, 0.95));
+  min-height: 360px;
+  overflow: hidden;
+}
+
+.builder-preview-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 12px;
+}
+
+.builder-preview-handle {
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.builder-preview-name {
+  font-size: 1rem;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.builder-preview-content {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+
+.builder-preview-block {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 9px 10px;
+  font-size: 0.84rem;
+}
+
+.builder-preview-block strong {
+  display: block;
+  font-size: 0.82rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, 0.76);
+}
+
+.builder-preview-links-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.builder-preview-link {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(18, 19, 22, 0.82);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+  padding: 8px 10px;
+  display: grid;
+}
+
+.builder-preview-link:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.builder-preview-links-wrap.builder-layout-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.builder-preview-links-wrap.builder-layout-compact {
+  gap: 4px;
+}
+
+.builder-preview-links-wrap.builder-layout-compact .builder-preview-link {
+  padding: 6px 8px;
+  font-size: 0.78rem;
+}
+
+.builder-preview-links-wrap.builder-layout-table .builder-preview-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.builder-preview-link.builder-button-pill {
+  border-radius: 999px;
+}
+
+.builder-preview-link.builder-button-square {
+  border-radius: 6px;
+}
+
+.builder-preview-link.builder-button-glass {
+  background: color-mix(in srgb, rgba(255, 255, 255, 0.18) 56%, transparent);
+  backdrop-filter: blur(7px);
+}
+
+.builder-preview-empty {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 0.82rem;
+}
+
 .admin-accordion {
   margin-top: 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -981,6 +1119,82 @@ button,
   overflow: hidden;
   text-overflow: ellipsis;
   display: block;
+}
+
+.inline-editable {
+  position: relative;
+}
+
+.inline-editable.is-editable {
+  cursor: pointer;
+}
+
+.inline-editable.is-editable:hover {
+  color: #fff;
+}
+
+.inline-editable.is-editable::after {
+  content: '✎';
+  margin-left: 7px;
+  opacity: 0;
+  font-size: 0.7rem;
+  transition: opacity 120ms ease;
+}
+
+.inline-editable.is-editable:hover::after,
+.inline-editable.is-editable:focus-visible::after {
+  opacity: 0.75;
+}
+
+.inline-editable.inline-edit-active::after {
+  display: none;
+}
+
+.inline-edit-shell {
+  display: grid;
+  gap: 6px;
+}
+
+.inline-edit-shell input,
+.inline-edit-shell textarea {
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 7px 9px;
+  font-size: 0.83rem;
+}
+
+.inline-edit-shell input:focus,
+.inline-edit-shell textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 60%, white 10%);
+}
+
+.inline-edit-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.inline-edit-btn {
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  padding: 4px 7px;
+  font-size: 0.73rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.inline-edit-btn.save {
+  background: color-mix(in srgb, var(--accent) 35%, rgba(255, 255, 255, 0.08));
+  border-color: color-mix(in srgb, var(--accent) 62%, rgba(255, 255, 255, 0.2));
+}
+
+.inline-edit-btn.cancel {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .link-admin-meta {
@@ -1592,6 +1806,14 @@ body.modal-open {
   }
 
   .settings-sidebar {
+    position: static;
+  }
+
+  .builder-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .builder-preview-column {
     position: static;
   }
 }
