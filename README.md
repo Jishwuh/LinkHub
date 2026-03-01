@@ -9,6 +9,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Redirect management (`/slug -> target URL`)
 - Custom embed blocks (strictly sanitized iframe HTML)
 - Per-link and per-redirect analytics (clicks, CTR, referrers, device, geo, hour, UTM)
+- QR code generator in admin (profile, links, blocks, redirects)
 - Visit and like counters
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
@@ -30,6 +31,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Drag-and-drop reordering for links and blocks
   - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
   - Per-item order badges and clearer visibility state
+- QR sharing tools:
+  - Profile-level QR button in Links panel
+  - Per-row QR buttons on Links, URL-capable Blocks, and Redirects
+  - In-modal QR preview with PNG download + URL copy
 - Full analytics upgrade:
   - Outbound tracking route for regular links (`/out/:id`)
   - Redirect analytics for all short links (`/:slug`)
@@ -186,6 +191,33 @@ To stop local DB:
 ```bash
 npm run dev:db:down
 ```
+
+### Troubleshooting: `ECONNREFUSED 127.0.0.1:3307`
+
+This means the app cannot reach your MySQL dev DB.
+
+For Docker-based dev DB:
+
+1. Start Docker Desktop.
+2. Run:
+
+```bash
+npm run dev:db:up
+```
+
+3. Then start app:
+
+```bash
+npm run dev
+```
+
+Quick port check in PowerShell:
+
+```powershell
+Test-NetConnection -ComputerName 127.0.0.1 -Port 3307
+```
+
+If you use a local MySQL install instead of Docker, update `.env.development` with the correct `DB_HOST` / `DB_PORT` and ensure MySQL is running.
 
 ## Production Setup
 

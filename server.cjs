@@ -9,6 +9,7 @@ const bcrypt = require('bcrypt');
 const sanitizeHtml = require('sanitize-html');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
+const QRCode = require('qrcode');
 const dotenv = require('dotenv');
 
 dotenv.config({ path: process.env.ENV_FILE || '.env' });
@@ -1458,6 +1459,38 @@ function createApp(passedConfig) {
         analytics,
         analyticsDays
       });
+    })
+  );
+
+  app.get(
+    '/admin/qr/image',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const target = normalizeHttpUrl(req.query?.target);
+      if (!target || target.length > 2048) return res.status(400).send('Valid target URL is required');
+
+      const requestedSize = Number.parseInt(String(req.query?.size || '384'), 10);
+      const size = Number.isFinite(requestedSize) ? Math.max(128, Math.min(1024, requestedSize)) : 384;
+
+      const rawName = sanitizeText(req.query?.name, 80)
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      const fileBase = rawName || 'linkhub-qr';
+
+      const pngBuffer = await QRCode.toBuffer(target, {
+        type: 'png',
+        width: size,
+        margin: 2,
+        errorCorrectionLevel: 'M'
+      });
+
+      if (parseBoolean(req.query?.download, false)) {
+        res.setHeader('Content-Disposition', `attachment; filename="${fileBase}.png"`);
+      }
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'private, max-age=120');
+      return res.send(pngBuffer);
     })
   );
 

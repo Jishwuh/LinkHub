@@ -1070,6 +1070,19 @@ button,
   font-size: 0.9rem;
 }
 
+.links-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.links-toolbar .links-help {
+  margin: 0;
+}
+
 .create-new-btn {
   margin: 0 6px 0 auto;
 }
@@ -1421,6 +1434,36 @@ button,
   justify-content: flex-end;
   gap: 8px;
   margin-top: 8px;
+}
+
+.modal-actions a.btn-secondary {
+  text-decoration: none;
+  display: inline-grid;
+  place-items: center;
+}
+
+.qr-preview-card {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 12px;
+}
+
+#qr-image {
+  width: min(320px, 80vw);
+  aspect-ratio: 1 / 1;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+#qr-status {
+  margin: 0;
+  text-align: center;
 }
 
 body.modal-open {
@@ -1847,6 +1890,15 @@ body.modal-open {
   }
 
   .settings-save {
+    width: 100%;
+  }
+
+  .links-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .links-toolbar .btn-secondary {
     width: 100%;
   }
 

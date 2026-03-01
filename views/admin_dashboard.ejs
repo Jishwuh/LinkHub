@@ -284,7 +284,10 @@
         <button type="button" class="btn-secondary create-new-btn" id="link-create-btn">Create New</button>
       </summary>
       <section class="card section-card">
-        <div class="links-help muted">Drag using the handle to reorder. Click title or URL to inline edit.</div>
+        <div class="links-toolbar">
+          <div class="links-help muted">Drag using the handle to reorder. Click title or URL to inline edit.</div>
+          <button type="button" class="btn-secondary" id="profile-qr-btn">Profile QR</button>
+        </div>
         <div id="links-admin-list" class="links-admin-list" data-csrf="<%= csrfToken %>">
           <% links.forEach((l, idx) => { %>
             <article
@@ -310,6 +313,7 @@
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit link">Edit</button>
                 <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
+                <button type="button" class="icon-action" data-action="qr" title="Show QR code">QR</button>
                 <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= l.is_visible ? 'Hide' : 'Show' %></button>
                 <button type="button" class="icon-action danger" data-action="delete" title="Delete link">Del</button>
               </div>
@@ -347,6 +351,7 @@
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
+                <button type="button" class="icon-action" data-action="qr" title="<%= ['links_cluster','button_link','image','embed'].includes(b.type) ? 'Show QR code' : 'QR unavailable for this block type' %>" <%= ['links_cluster','button_link','image','embed'].includes(b.type) ? '' : 'disabled' %>>QR</button>
                 <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility"><%= b.is_visible ? 'Hide' : 'Show' %></button>
                 <button type="button" class="icon-action danger" data-action="delete" title="Delete block">Del</button>
               </div>
@@ -398,6 +403,7 @@
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
                 <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
+                <button type="button" class="icon-action" data-action="qr" title="Show QR code">QR</button>
                 <button type="button" class="icon-action" data-action="toggle" title="Toggle active"><%= r.is_active ? 'Off' : 'On' %></button>
                 <button type="button" class="icon-action danger" data-action="delete" title="Delete redirect">Del</button>
               </div>
@@ -795,6 +801,28 @@
           <div class="modal-actions">
             <button type="submit">Save Redirect</button>
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="qr-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="qr-modal-title">QR Code</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="qr-modal-form" class="modal-form" onsubmit="return false;">
+          <label class="modal-field">
+            <span class="modal-label">Target URL</span>
+            <input id="qr-target-url" type="text" readonly>
+          </label>
+          <div class="qr-preview-card">
+            <img id="qr-image" alt="QR code preview" loading="lazy">
+            <p id="qr-status" class="modal-hint">QR preview updates instantly.</p>
+          </div>
+          <div class="modal-actions">
+            <button type="button" id="qr-copy-url-btn">Copy URL</button>
+            <a id="qr-download-btn" class="btn-secondary" href="#" download>Download PNG</a>
+            <button type="button" class="btn-secondary" data-modal-close>Done</button>
           </div>
         </form>
       </section>

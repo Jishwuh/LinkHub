@@ -331,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
       link: $('#link-modal', overlay || document),
       block: $('#block-modal', overlay || document),
       redirect: $('#redirect-modal', overlay || document),
+      qr: $('#qr-modal', overlay || document),
       utm: $('#utm-modal', overlay || document)
     };
 
@@ -718,7 +719,186 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  function setupLinksManager(modal, utmBuilder) {
+  function setupQrBuilder(modal) {
+    const form = $('#qr-modal-form');
+    const modalTitle = $('#qr-modal-title');
+    const targetUrlEl = $('#qr-target-url');
+    const qrImageEl = $('#qr-image');
+    const statusEl = $('#qr-status');
+    const copyUrlBtn = $('#qr-copy-url-btn');
+    const downloadBtn = $('#qr-download-btn');
+    const profileBtn = $('#profile-qr-btn');
+    const settingsForm = $('#settings-form');
+    const siteUrlInput = $('[name="site_url"]', settingsForm || document);
+
+    if (!form || !targetUrlEl || !qrImageEl || !copyUrlBtn || !downloadBtn) {
+      return {
+        openForProfile: () => {},
+        openForLink: () => {},
+        openForRedirect: () => {},
+        openForBlock: () => {}
+      };
+    }
+
+    const toHttpUrl = raw => {
+      const value = String(raw || '').trim();
+      if (!value) return '';
+      try {
+        const parsed = new URL(value);
+        if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+        return parsed.toString();
+      } catch {
+        return '';
+      }
+    };
+
+    const slugifyFilename = raw => {
+      const value = String(raw || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      return value || 'linkhub-qr';
+    };
+
+    const profileUrl = () => {
+      const configured = toHttpUrl(siteUrlInput?.value || '');
+      if (configured) return configured;
+      return `${window.location.origin}/`;
+    };
+
+    const qrImageUrl = (target, name, download = false) =>
+      `/admin/qr/image?target=${encodeURIComponent(target)}&size=512&name=${encodeURIComponent(name)}${download ? '&download=1' : ''}`;
+
+    const setStatus = (message, type = '') => {
+      if (!statusEl) return;
+      statusEl.textContent = message;
+      statusEl.classList.remove('text-success', 'text-danger');
+      if (type === 'success') statusEl.classList.add('text-success');
+      if (type === 'error') statusEl.classList.add('text-danger');
+    };
+
+    let currentTarget = '';
+
+    const openQr = ({ label, target, filename }) => {
+      const normalized = toHttpUrl(target);
+      if (!normalized) {
+        showToast('Unable to generate QR for this item', 'error');
+        return;
+      }
+
+      const safeFilename = slugifyFilename(filename || label || 'linkhub-qr');
+      currentTarget = normalized;
+      targetUrlEl.value = normalized;
+      if (modalTitle) modalTitle.textContent = `QR Code: ${label || 'Target URL'}`;
+      downloadBtn.href = qrImageUrl(normalized, safeFilename, true);
+      qrImageEl.src = qrImageUrl(normalized, safeFilename, false);
+      qrImageEl.hidden = false;
+      qrImageEl.alt = `QR code for ${label || 'target URL'}`;
+      setStatus('Generating QR preview...');
+      modal.open('qr');
+    };
+
+    qrImageEl.addEventListener('load', () => {
+      setStatus('QR preview ready. Download or share as needed.', 'success');
+    });
+    qrImageEl.addEventListener('error', () => {
+      setStatus('Failed to generate QR preview.', 'error');
+    });
+
+    copyUrlBtn.addEventListener('click', async () => {
+      if (!currentTarget) {
+        setStatus('No target URL to copy.', 'error');
+        return;
+      }
+      try {
+        if (navigator.clipboard?.writeText) {
+          await navigator.clipboard.writeText(currentTarget);
+        } else {
+          targetUrlEl.focus();
+          targetUrlEl.select();
+          document.execCommand('copy');
+        }
+        setStatus('Target URL copied to clipboard.', 'success');
+      } catch {
+        setStatus('Copy failed. You can still copy manually from the URL field.', 'error');
+      }
+    });
+
+    const openForProfile = () =>
+      openQr({
+        label: 'Profile Page',
+        target: profileUrl(),
+        filename: 'profile-page'
+      });
+
+    profileBtn?.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openForProfile();
+    });
+
+    return {
+      openForProfile,
+      openForLink(item) {
+        const id = Number(item?.dataset?.id || 0);
+        if (!id) return;
+        const title = String(item?.dataset?.title || `link-${id}`).trim();
+        openQr({
+          label: title || `Link #${id}`,
+          target: `${window.location.origin}/out/${id}`,
+          filename: `link-${id}-${title}`
+        });
+      },
+      openForRedirect(item) {
+        const slug = String(item?.dataset?.slug || '').trim().replace(/^\/+/, '');
+        if (!slug) return;
+        openQr({
+          label: `/${slug}`,
+          target: `${window.location.origin}/${encodeURIComponent(slug)}`,
+          filename: `redirect-${slug}`
+        });
+      },
+      openForBlock(item) {
+        const type = String(item?.dataset?.type || '').trim();
+        const data = (() => {
+          try {
+            return JSON.parse(decodeAttr(item?.dataset?.json || '')) || {};
+          } catch {
+            return {};
+          }
+        })();
+
+        let target = '';
+        if (type === 'button_link') {
+          target = toHttpUrl(data.url);
+        } else if (type === 'image') {
+          target = toHttpUrl(data.src);
+        } else if (type === 'embed') {
+          const html = String(data.embed_html || '');
+          const srcMatch = html.match(/\bsrc=(["'])(https?:\/\/[^"']+)\1/i);
+          target = toHttpUrl(srcMatch?.[2] || '');
+        } else if (type === 'links_cluster') {
+          target = profileUrl();
+        }
+
+        if (!target) {
+          showToast('This block type does not have a direct URL for QR.', 'error');
+          return;
+        }
+
+        const id = Number(item?.dataset?.id || 0);
+        openQr({
+          label: `Block: ${type.replace(/_/g, ' ')}`,
+          target,
+          filename: `block-${id || 'item'}-${type}`
+        });
+      }
+    };
+  }
+
+  function setupLinksManager(modal, utmBuilder, qrBuilder) {
     const list = $('#links-admin-list');
     const createBtn = $('#link-create-btn');
     const form = $('#link-modal-form');
@@ -981,6 +1161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit link">Edit</button>
           <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
+          <button type="button" class="icon-action" data-action="qr" title="Show QR code">QR</button>
           <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility">Hide</button>
           <button type="button" class="icon-action danger" data-action="delete" title="Delete link">Del</button>
         </div>
@@ -1101,6 +1282,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (action === 'utm') {
           utmBuilder?.openForLink(item);
+          return;
+        }
+
+        if (action === 'qr') {
+          qrBuilder?.openForLink(item);
           return;
         }
 
@@ -1228,7 +1414,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncIconPreview();
   }
 
-  function setupBlocksManager(modal) {
+  function setupBlocksManager(modal, qrBuilder) {
     const list = $('#blocks-admin-list');
     const createBtn = $('#block-create-btn');
     const form = $('#block-modal-form');
@@ -1276,6 +1462,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (type === 'embed') return String(data.title || 'Embed block').trim();
       return 'Block';
     };
+
+    const supportsQrForBlockType = type => ['links_cluster', 'button_link', 'image', 'embed'].includes(String(type || ''));
 
     const inlineConfigForBlock = (type, data) => {
       if (type === 'heading') {
@@ -1554,6 +1742,13 @@ document.addEventListener('DOMContentLoaded', () => {
       const typePill = $('.link-pill', item);
       if (typePill) typePill.textContent = type;
 
+      const qrBtn = $('[data-action="qr"]', item);
+      if (qrBtn) {
+        const supported = supportsQrForBlockType(type);
+        qrBtn.disabled = !supported;
+        qrBtn.title = supported ? 'Show QR code' : 'QR unavailable for this block type';
+      }
+
       const toggleBtn = $('[data-action="toggle"]', item);
       if (toggleBtn) toggleBtn.textContent = isVisible ? 'Hide' : 'Show';
     };
@@ -1574,6 +1769,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
+          <button type="button" class="icon-action" data-action="qr" title="Show QR code">QR</button>
           <button type="button" class="icon-action" data-action="toggle" title="Toggle visibility">Hide</button>
           <button type="button" class="icon-action danger" data-action="delete" title="Delete block">Del</button>
         </div>
@@ -1703,6 +1899,11 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        if (action === 'qr') {
+          qrBuilder?.openForBlock(item);
+          return;
+        }
+
         if (action === 'toggle') {
           const nextVisible = item.dataset.visible === '1' ? 0 : 1;
           const result = await postUrlEncoded('/admin/block/toggle', {
@@ -1798,11 +1999,14 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    $$('.link-admin-item', list).forEach(item => {
+      setBlockItem(item, blockFromDataset(item));
+    });
     resetModalFields();
     syncOrderBadges();
   }
 
-  function setupRedirectsManager(modal, utmBuilder) {
+  function setupRedirectsManager(modal, utmBuilder, qrBuilder) {
     const list = $('#redirects-admin-list');
     const createBtn = $('#redirect-create-btn');
     const form = $('#redirect-modal-form');
@@ -1857,6 +2061,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
           <button type="button" class="icon-action" data-action="utm" title="Build tracked URL">Track</button>
+          <button type="button" class="icon-action" data-action="qr" title="Show QR code">QR</button>
           <button type="button" class="icon-action" data-action="toggle" title="Toggle active">Off</button>
           <button type="button" class="icon-action danger" data-action="delete" title="Delete redirect">Del</button>
         </div>
@@ -1963,6 +2168,11 @@ document.addEventListener('DOMContentLoaded', () => {
           return;
         }
 
+        if (action === 'qr') {
+          qrBuilder?.openForRedirect(item);
+          return;
+        }
+
         if (action === 'toggle') {
           const nextActive = item.dataset.active === '1' ? 0 : 1;
           const result = await postUrlEncoded('/admin/redirect/toggle', {
@@ -2005,13 +2215,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const modal = createModalController();
   const utmBuilder = setupUtmBuilder(modal);
+  const qrBuilder = setupQrBuilder(modal);
   setupSummaryButtons();
   setupSettingsTabs();
   setupThemeColorPreview();
   setupSettingsSave();
   setupLivePreview();
   setupBuilderPreview();
-  setupLinksManager(modal, utmBuilder);
-  setupBlocksManager(modal);
-  setupRedirectsManager(modal, utmBuilder);
+  setupLinksManager(modal, utmBuilder, qrBuilder);
+  setupBlocksManager(modal, qrBuilder);
+  setupRedirectsManager(modal, utmBuilder, qrBuilder);
 });

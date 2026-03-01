@@ -65,9 +65,9 @@
 
 ## “Nice to have” extras (quick wins)
 
-- [ ] **QR code generator**
-  - [ ] QR for profile page
-  - [ ] QR for each redirect slug
+- [x] **QR code generator**
+  - [x] QR for profile page
+  - [x] QR for each redirect slug
 
 - [ ] **Auto link enrichment**
   - [ ] Paste URL → suggest title + icon + preview image
