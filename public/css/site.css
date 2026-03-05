@@ -1344,6 +1344,29 @@ button,
   font-weight: 600;
 }
 
+.modal-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal-inline-action {
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 0.74rem;
+  padding: 5px 8px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.modal-inline-action:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
 .modal-form input,
 .modal-form textarea,
 .modal-form select {
@@ -1427,6 +1450,41 @@ button,
 .icon-key-preview-label {
   font-size: 0.84rem;
   color: #fff;
+}
+
+.link-enrich-preview {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 10px;
+  align-items: center;
+}
+
+.link-enrich-image-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.24);
+  display: grid;
+  place-items: center;
+}
+
+.link-enrich-image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.link-enrich-meta {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
 }
 
 .modal-actions {

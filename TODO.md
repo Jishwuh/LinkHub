@@ -69,8 +69,8 @@
   - [x] QR for profile page
   - [x] QR for each redirect slug
 
-- [ ] **Auto link enrichment**
-  - [ ] Paste URL → suggest title + icon + preview image
+- [x] **Auto link enrichment**
+  - [x] Paste URL → suggest title + icon + preview image
 
 - [ ] **Per-slug OpenGraph**
   - [ ] Custom OG/Twitter preview per redirect slug (not just per page)

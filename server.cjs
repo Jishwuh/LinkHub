@@ -1,5 +1,7 @@
 const path = require('path');
 const fs = require('fs');
+const dns = require('dns').promises;
+const net = require('net');
 const crypto = require('crypto');
 const express = require('express');
 const helmet = require('helmet');
@@ -180,6 +182,156 @@ function normalizeHttpUrl(value) {
   } catch {
     return '';
   }
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractMetaContent(html, key, attrName = 'property') {
+  const safeKey = escapeRegExp(key);
+  const patterns = [
+    new RegExp(`<meta[^>]*${attrName}\\s*=\\s*["']${safeKey}["'][^>]*content\\s*=\\s*["']([^"']+)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]*content\\s*=\\s*["']([^"']+)["'][^>]*${attrName}\\s*=\\s*["']${safeKey}["'][^>]*>`, 'i')
+  ];
+
+  for (const pattern of patterns) {
+    const match = String(html || '').match(pattern);
+    if (match?.[1]) return sanitizeText(decodeHtmlEntities(match[1]), 2048);
+  }
+  return '';
+}
+
+function resolveAbsoluteHttpUrl(value, baseUrl) {
+  const raw = sanitizeText(decodeHtmlEntities(value), 2048);
+  if (!raw) return '';
+  try {
+    const absolute = new URL(raw, baseUrl).toString();
+    return normalizeHttpUrl(absolute);
+  } catch {
+    return '';
+  }
+}
+
+function parseLinkMetadataFromHtml(html, baseUrl) {
+  const raw = String(html || '');
+  const titleMatch = raw.match(/<title[^>]*>([^<]{1,500})<\/title>/i);
+  const titleFromTag = titleMatch?.[1] ? sanitizeText(decodeHtmlEntities(titleMatch[1]), 255) : '';
+
+  const title =
+    extractMetaContent(raw, 'og:title', 'property') ||
+    extractMetaContent(raw, 'twitter:title', 'name') ||
+    titleFromTag;
+  const description =
+    extractMetaContent(raw, 'og:description', 'property') ||
+    extractMetaContent(raw, 'twitter:description', 'name') ||
+    extractMetaContent(raw, 'description', 'name');
+  const siteName = extractMetaContent(raw, 'og:site_name', 'property');
+  const imageRaw = extractMetaContent(raw, 'og:image', 'property') || extractMetaContent(raw, 'twitter:image', 'name');
+  const previewImageUrl = resolveAbsoluteHttpUrl(imageRaw, baseUrl);
+
+  return {
+    title: sanitizeText(title, 255),
+    description: sanitizeText(description, 280),
+    siteName: sanitizeText(siteName, 120),
+    previewImageUrl
+  };
+}
+
+function isPrivateOrLoopbackIp(ipAddress) {
+  const family = net.isIP(String(ipAddress || ''));
+  if (!family) return true;
+
+  const ip = String(ipAddress).trim().toLowerCase();
+  if (family === 4) {
+    const parts = ip.split('.').map(part => Number.parseInt(part, 10));
+    if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+
+    if (parts[0] === 10) return true;
+    if (parts[0] === 127) return true;
+    if (parts[0] === 0) return true;
+    if (parts[0] === 169 && parts[1] === 254) return true;
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+    if (parts[0] === 198 && (parts[1] === 18 || parts[1] === 19)) return true;
+    return false;
+  }
+
+  // IPv6 loopback, link-local, unique-local and IPv4-mapped private/loopback.
+  if (ip === '::1') return true;
+  if (ip.startsWith('fe80:')) return true;
+  if (ip.startsWith('fc') || ip.startsWith('fd')) return true;
+  if (ip.startsWith('::ffff:')) {
+    const mapped = ip.slice(7);
+    if (net.isIP(mapped) === 4) return isPrivateOrLoopbackIp(mapped);
+  }
+  return false;
+}
+
+async function isDisallowedOutboundHostname(hostname) {
+  const normalized = String(hostname || '').trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized === 'localhost' || normalized.endsWith('.localhost')) return true;
+  if (normalized.endsWith('.local')) return true;
+
+  if (net.isIP(normalized)) return isPrivateOrLoopbackIp(normalized);
+
+  try {
+    const records = await dns.lookup(normalized, { all: true });
+    if (!Array.isArray(records) || records.length === 0) return true;
+    return records.some(record => isPrivateOrLoopbackIp(record?.address));
+  } catch {
+    return true;
+  }
+}
+
+function suggestIconKeyFromHostname(hostname) {
+  const normalized = String(hostname || '').trim().toLowerCase().replace(/^www\./, '');
+  if (!normalized) return '';
+
+  const hostMap = new Map([
+    ['youtube.com', 'youtube'],
+    ['youtu.be', 'youtube'],
+    ['x.com', 'x'],
+    ['twitter.com', 'twitter'],
+    ['instagram.com', 'instagram'],
+    ['tiktok.com', 'tiktok'],
+    ['github.com', 'github'],
+    ['linkedin.com', 'linkedin'],
+    ['facebook.com', 'facebook'],
+    ['discord.com', 'discord'],
+    ['discord.gg', 'discord'],
+    ['twitch.tv', 'twitch'],
+    ['spotify.com', 'spotify'],
+    ['reddit.com', 'reddit'],
+    ['pinterest.com', 'pinterest'],
+    ['snapchat.com', 'snapchat'],
+    ['telegram.me', 'telegram'],
+    ['t.me', 'telegram'],
+    ['medium.com', 'medium'],
+    ['threads.net', 'threads'],
+    ['substack.com', 'substack'],
+    ['patreon.com', 'patreon']
+  ]);
+
+  for (const [domain, iconKey] of hostMap.entries()) {
+    if (normalized === domain || normalized.endsWith(`.${domain}`)) return iconKey;
+  }
+
+  const label = normalized.split('.').filter(Boolean)[0] || '';
+  if (!label) return '';
+  const candidate = label.replace(/[^a-z0-9_-]/g, '').slice(0, 50);
+  return candidate;
 }
 
 function sanitizeUtmParamValue(value) {
@@ -1576,6 +1728,93 @@ function createApp(passedConfig) {
   );
 
   app.post(
+    '/admin/link/enrich',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const targetUrl = normalizeHttpUrl(req.body?.url);
+      if (!targetUrl) return res.status(400).send('Valid URL is required');
+
+      let parsed;
+      try {
+        parsed = new URL(targetUrl);
+      } catch {
+        return res.status(400).send('Valid URL is required');
+      }
+
+      const hostnameBlocked = await isDisallowedOutboundHostname(parsed.hostname);
+      if (hostnameBlocked) return res.status(400).send('URL host is not allowed for enrichment');
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 9000);
+
+      try {
+        const response = await fetch(targetUrl, {
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: {
+            'User-Agent': `LinkHub Metadata Bot (+https://${normalizePublicDomain(config.publicDomain)})`,
+            Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1'
+          }
+        });
+
+        clearTimeout(timeout);
+
+        if (!response.ok) return res.status(502).send(`Upstream responded with ${response.status}`);
+
+        const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+        if (!contentType.includes('text/html') && !contentType.includes('application/xhtml+xml')) {
+          return res.status(422).send('URL did not return an HTML page');
+        }
+
+        const contentLength = Number.parseInt(String(response.headers.get('content-length') || '0'), 10);
+        if (Number.isFinite(contentLength) && contentLength > 2_000_000) {
+          return res.status(422).send('Page is too large to enrich');
+        }
+
+        const finalUrl = normalizeHttpUrl(response.url) || targetUrl;
+        const html = String(await response.text()).slice(0, 450_000);
+        const metadata = parseLinkMetadataFromHtml(html, finalUrl);
+
+        let finalHost = '';
+        try {
+          finalHost = new URL(finalUrl).hostname;
+        } catch {
+          finalHost = parsed.hostname;
+        }
+
+        const title =
+          metadata.title || sanitizeText(finalHost.replace(/^www\./, ''), 255) || sanitizeText(parsed.hostname.replace(/^www\./, ''), 255);
+        let iconKey = suggestIconKeyFromHostname(finalHost) || suggestIconKeyFromHostname(parsed.hostname);
+
+        if (iconKey) {
+          const iconPath = path.join(__dirname, 'public', 'images', 'socials', `${iconKey}.svg`);
+          if (!fs.existsSync(iconPath)) iconKey = '';
+        }
+
+        const enrichment = {
+          title: sanitizeText(title, 255),
+          icon_key: sanitizeText(iconKey, 50),
+          preview_image_url: metadata.previewImageUrl || '',
+          site_name: metadata.siteName || '',
+          description: metadata.description || '',
+          final_url: finalUrl
+        };
+
+        return res.json({
+          ok: true,
+          message: 'Link suggestion generated',
+          enrichment
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        if (error?.name === 'AbortError') return res.status(504).send('Metadata fetch timed out');
+        return res.status(502).send('Unable to fetch metadata for this URL');
+      }
+    })
+  );
+
+  app.post(
     '/admin/link',
     requireAuth,
     requireCsrf,
@@ -2236,6 +2475,7 @@ module.exports = {
   sanitizeSlug,
   sanitizeColorHex,
   normalizeHttpUrl,
+  suggestIconKeyFromHostname,
   sanitizeEmbedHtml,
   buildTrackedDestinationUrl
 };

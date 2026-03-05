@@ -915,8 +915,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const colorEl = $('#link-modal-color');
     const colorPreviewEl = $('#link-modal-color-preview');
     const visibleEl = $('#link-modal-visible');
+    const enrichBtn = $('#link-modal-enrich-btn');
+    const enrichStatusEl = $('#link-modal-enrich-status');
+    const enrichPreviewEl = $('#link-modal-enrich-preview');
+    const enrichImageEl = $('#link-modal-enrich-image');
+    const enrichImageFallbackEl = $('#link-modal-enrich-image-fallback');
+    const enrichTitleEl = $('#link-modal-enrich-title');
+    const enrichHostEl = $('#link-modal-enrich-host');
 
     let dragArmedId = null;
+    let enrichTimer = 0;
+    let enrichNonce = 0;
 
     const syncModalColor = () => applyColorChip(colorPreviewEl, colorEl?.value);
     const knownIconValues = () => new Set(Array.from(iconEl.options).map(option => option.value));
@@ -957,6 +966,122 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       if (iconPreviewLabelEl) iconPreviewLabelEl.textContent = key;
+    };
+
+    const setEnrichStatus = (message, type = '') => {
+      if (!enrichStatusEl) return;
+      enrichStatusEl.textContent = message;
+      enrichStatusEl.classList.remove('text-success', 'text-danger');
+      if (type === 'success') enrichStatusEl.classList.add('text-success');
+      if (type === 'error') enrichStatusEl.classList.add('text-danger');
+    };
+
+    const resetEnrichPreview = () => {
+      if (enrichPreviewEl) enrichPreviewEl.hidden = true;
+      if (enrichImageEl) {
+        enrichImageEl.hidden = true;
+        enrichImageEl.removeAttribute('src');
+      }
+      if (enrichImageFallbackEl) {
+        enrichImageFallbackEl.hidden = false;
+        enrichImageFallbackEl.textContent = 'No image';
+      }
+      if (enrichTitleEl) enrichTitleEl.textContent = 'Paste a URL to suggest title, icon, and preview.';
+      if (enrichHostEl) enrichHostEl.textContent = '';
+      setEnrichStatus('Paste a URL, then click Suggest to auto-fill details.');
+    };
+
+    const normalizeSuggestedUrl = raw => {
+      const value = String(raw || '').trim();
+      if (!value) return '';
+      if (/^https?:\/\//i.test(value)) return value;
+      if (/^[a-z0-9.-]+\.[a-z]{2,}(\/|$)/i.test(value)) return `https://${value}`;
+      return value;
+    };
+
+    const applyEnrichment = (enrichment, { force = false } = {}) => {
+      const titleSuggestion = String(enrichment?.title || '').trim();
+      const iconSuggestion = String(enrichment?.icon_key || '').trim();
+      const previewImage = String(enrichment?.preview_image_url || '').trim();
+      const finalUrl = String(enrichment?.final_url || '').trim();
+
+      if (force || !String(titleEl.value || '').trim()) {
+        if (titleSuggestion) titleEl.value = titleSuggestion;
+      }
+
+      if (iconSuggestion && (force || !String(iconEl.value || '').trim())) {
+        ensureIconOption(iconSuggestion);
+        iconEl.value = iconSuggestion;
+        syncIconPreview();
+      }
+
+      if (enrichPreviewEl) enrichPreviewEl.hidden = false;
+      if (enrichTitleEl) enrichTitleEl.textContent = titleSuggestion || 'No title detected';
+      if (enrichHostEl) enrichHostEl.textContent = finalUrl || '';
+      if (enrichImageEl) {
+        if (previewImage) {
+          enrichImageEl.hidden = false;
+          enrichImageEl.src = previewImage;
+          enrichImageEl.alt = titleSuggestion ? `${titleSuggestion} preview` : 'Link preview image';
+          if (enrichImageFallbackEl) enrichImageFallbackEl.hidden = true;
+        } else {
+          enrichImageEl.hidden = true;
+          enrichImageEl.removeAttribute('src');
+          if (enrichImageFallbackEl) {
+            enrichImageFallbackEl.hidden = false;
+            enrichImageFallbackEl.textContent = 'No image';
+          }
+        }
+      }
+    };
+
+    const runEnrichment = async ({ force = false } = {}) => {
+      const raw = String(urlEl?.value || '').trim();
+      if (!raw) {
+        if (force) setEnrichStatus('Enter a URL first.', 'error');
+        return;
+      }
+
+      const normalized = normalizeSuggestedUrl(raw);
+      if (normalized !== raw) urlEl.value = normalized;
+      if (!/^https?:\/\//i.test(normalized)) {
+        if (force) setEnrichStatus('Use a valid http(s) URL.', 'error');
+        return;
+      }
+
+      const nonce = ++enrichNonce;
+      if (enrichBtn) {
+        enrichBtn.disabled = true;
+        enrichBtn.textContent = 'Loading...';
+      }
+      setEnrichStatus('Fetching metadata...');
+
+      try {
+        const result = await postUrlEncoded('/admin/link/enrich', {
+          _csrf: csrfToken,
+          url: normalized
+        });
+
+        if (nonce !== enrichNonce) return;
+        const enrichment = result?.enrichment || {};
+        applyEnrichment(enrichment, { force });
+        setEnrichStatus(result?.message || 'Suggestion loaded', 'success');
+      } catch (error) {
+        if (nonce !== enrichNonce) return;
+        setEnrichStatus(error.message || 'Unable to enrich this URL', 'error');
+      } finally {
+        if (nonce === enrichNonce && enrichBtn) {
+          enrichBtn.disabled = false;
+          enrichBtn.textContent = 'Suggest';
+        }
+      }
+    };
+
+    const scheduleEnrichment = () => {
+      window.clearTimeout(enrichTimer);
+      enrichTimer = window.setTimeout(() => {
+        void runEnrichment({ force: false });
+      }, 500);
     };
 
     const syncOrderBadges = () => {
@@ -1186,6 +1311,7 @@ document.addEventListener('DOMContentLoaded', () => {
       visibleEl.checked = true;
       syncModalColor();
       syncIconPreview();
+      resetEnrichPreview();
       modal.open('link');
       titleEl.focus();
     };
@@ -1202,6 +1328,7 @@ document.addEventListener('DOMContentLoaded', () => {
       visibleEl.checked = item.dataset.visible !== '0';
       syncModalColor();
       syncIconPreview();
+      resetEnrichPreview();
       modal.open('link');
       titleEl.focus();
     };
@@ -1392,6 +1519,28 @@ document.addEventListener('DOMContentLoaded', () => {
     colorEl?.addEventListener('input', syncModalColor);
     colorEl?.addEventListener('change', syncModalColor);
     iconEl?.addEventListener('change', syncIconPreview);
+    enrichBtn?.addEventListener('click', event => {
+      event.preventDefault();
+      void runEnrichment({ force: true });
+    });
+    urlEl?.addEventListener('paste', event => {
+      const pasted = event.clipboardData?.getData('text') || '';
+      if (pasted) {
+        const normalized = normalizeSuggestedUrl(pasted);
+        if (normalized !== pasted) {
+          event.preventDefault();
+          urlEl.value = normalized;
+        }
+      }
+      scheduleEnrichment();
+    });
+    urlEl?.addEventListener('input', () => {
+      scheduleEnrichment();
+    });
+    urlEl?.addEventListener('blur', () => {
+      window.clearTimeout(enrichTimer);
+      void runEnrichment({ force: false });
+    });
     iconPreviewImgEl?.addEventListener('error', () => {
       if (iconPreviewImgEl) {
         iconPreviewImgEl.hidden = true;
@@ -1405,6 +1554,16 @@ document.addEventListener('DOMContentLoaded', () => {
         iconPreviewLabelEl.textContent = `Icon not found: ${String(iconEl?.value || '').trim()}`;
       }
     });
+    enrichImageEl?.addEventListener('error', () => {
+      if (enrichImageEl) {
+        enrichImageEl.hidden = true;
+        enrichImageEl.removeAttribute('src');
+      }
+      if (enrichImageFallbackEl) {
+        enrichImageFallbackEl.hidden = false;
+        enrichImageFallbackEl.textContent = 'Image failed to load';
+      }
+    });
 
     $$('.color-chip', list).forEach(chip => {
       applyColorChip(chip, chip.dataset.color);
@@ -1412,6 +1571,7 @@ document.addEventListener('DOMContentLoaded', () => {
     syncOrderBadges();
     syncModalColor();
     syncIconPreview();
+    resetEnrichPreview();
   }
 
   function setupBlocksManager(modal, qrBuilder) {

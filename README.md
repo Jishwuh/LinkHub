@@ -10,6 +10,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Custom embed blocks (strictly sanitized iframe HTML)
 - Per-link and per-redirect analytics (clicks, CTR, referrers, device, geo, hour, UTM)
 - QR code generator in admin (profile, links, blocks, redirects)
+- Auto link enrichment in admin (URL -> suggested title, icon, preview image)
 - Visit and like counters
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
@@ -31,6 +32,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Drag-and-drop reordering for links and blocks
   - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
   - Per-item order badges and clearer visibility state
+- Link enrichment workflow:
+  - Paste a URL in `Create/Edit Link`
+  - Auto-suggested title, icon key, and preview image
+  - Manual `Suggest` trigger plus auto-fetch on paste/input
 - QR sharing tools:
   - Profile-level QR button in Links panel
   - Per-row QR buttons on Links, URL-capable Blocks, and Redirects

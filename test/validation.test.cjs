@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeHttpUrl, sanitizeSlug, sanitizeColorHex, sanitizeEmbedHtml, buildTrackedDestinationUrl } = require('../server.cjs');
+const { normalizeHttpUrl, sanitizeSlug, sanitizeColorHex, sanitizeEmbedHtml, buildTrackedDestinationUrl, suggestIconKeyFromHostname } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
   assert.equal(normalizeHttpUrl('https://example.com/path'), 'https://example.com/path');
@@ -57,4 +57,10 @@ test('buildTrackedDestinationUrl appends sanitized UTM params', () => {
   assert.match(output, /utm_source=instagram/);
   assert.match(output, /utm_medium=bio/);
   assert.match(output, /utm_campaign=launch/);
+});
+
+test('suggestIconKeyFromHostname maps common social domains', () => {
+  assert.equal(suggestIconKeyFromHostname('www.youtube.com'), 'youtube');
+  assert.equal(suggestIconKeyFromHostname('x.com'), 'x');
+  assert.equal(suggestIconKeyFromHostname('github.com'), 'github');
 });

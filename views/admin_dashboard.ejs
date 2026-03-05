@@ -639,7 +639,10 @@
               <input name="title" id="link-modal-title-input" required>
             </label>
             <label class="modal-field">
-              <span class="modal-label">URL</span>
+              <span class="modal-label modal-label-row">
+                <span>URL</span>
+                <button type="button" class="modal-inline-action" id="link-modal-enrich-btn">Suggest</button>
+              </span>
               <input name="url" id="link-modal-url" type="url" required>
             </label>
             <label class="modal-field">
@@ -668,7 +671,19 @@
                 <span id="link-modal-color-preview" class="color-chip color-chip-lg" title="#2a2a2a"></span>
               </div>
             </label>
+            <div id="link-modal-enrich-preview" class="link-enrich-preview modal-field-span2" hidden>
+              <div class="link-enrich-image-wrap">
+                <img id="link-modal-enrich-image" src="" alt="" hidden>
+                <span id="link-modal-enrich-image-fallback" class="icon-key-preview-fallback">No image</span>
+              </div>
+              <div class="link-enrich-meta">
+                <div class="icon-key-preview-title">Link Suggestion</div>
+                <div id="link-modal-enrich-title" class="icon-key-preview-label">Paste a URL to suggest title, icon, and preview.</div>
+                <div id="link-modal-enrich-host" class="modal-hint"></div>
+              </div>
+            </div>
           </div>
+          <p id="link-modal-enrich-status" class="modal-hint">Paste a URL, then click Suggest to auto-fill details.</p>
           <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="link-modal-visible" checked> Visible</label>
           <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
           <div class="modal-actions">
