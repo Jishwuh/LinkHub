@@ -75,6 +75,13 @@ function parseBoolean(value, defaultValue = false) {
   return defaultValue;
 }
 
+function parseIntegerInRange(value, fallback, min, max) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  if (!Number.isInteger(parsed)) return fallback;
+  if (parsed < min || parsed > max) return fallback;
+  return parsed;
+}
+
 function parseTrustProxy(value, env) {
   if (value == null || value === '') return env === 'production' ? 1 : false;
   if (/^\d+$/.test(String(value))) return Number(value);
@@ -94,6 +101,12 @@ function buildConfig(envSource = process.env) {
     bcryptRounds: Number(envSource.BCRYPT_ROUNDS || 12),
     trustProxy: parseTrustProxy(envSource.TRUST_PROXY, env),
     seedDemoData: parseBoolean(envSource.SEED_DEMO_DATA, false),
+    likeRateLimitWindowMs: parseIntegerInRange(envSource.LIKE_RATE_LIMIT_WINDOW_MS, 60 * 1000, 1000, 60 * 60 * 1000),
+    likeRateLimitMax: parseIntegerInRange(envSource.LIKE_RATE_LIMIT_MAX, 20, 1, 1000),
+    redirectRateLimitWindowMs: parseIntegerInRange(envSource.REDIRECT_RATE_LIMIT_WINDOW_MS, 60 * 1000, 1000, 60 * 60 * 1000),
+    redirectRateLimitMax: parseIntegerInRange(envSource.REDIRECT_RATE_LIMIT_MAX, 120, 1, 5000),
+    viewCountThrottleSeconds: parseIntegerInRange(envSource.VIEW_COUNT_THROTTLE_SECONDS, 300, 1, 24 * 60 * 60),
+    viewCountRetentionDays: parseIntegerInRange(envSource.VIEW_COUNT_RETENTION_DAYS, 30, 1, 365),
     db: {
       host: envSource.DB_HOST || '127.0.0.1',
       port: parseInt(envSource.DB_PORT || '3306', 10),
@@ -792,8 +805,15 @@ function createApp(passedConfig) {
     legacyHeaders: false
   });
   const likeLimiter = rateLimit({
-    windowMs: 60 * 1000,
-    max: 20,
+    windowMs: config.likeRateLimitWindowMs,
+    max: config.likeRateLimitMax,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  const redirectLimiter = rateLimit({
+    windowMs: config.redirectRateLimitWindowMs,
+    max: config.redirectRateLimitMax,
+    message: 'Too many redirect requests. Please retry shortly.',
     standardHeaders: true,
     legacyHeaders: false
   });
@@ -904,6 +924,17 @@ function createApp(passedConfig) {
     `);
   }
 
+  async function ensureVisitThrottleSchema() {
+    await run(`
+      CREATE TABLE IF NOT EXISTS visit_throttle (
+        visitor_hash CHAR(64) PRIMARY KEY,
+        last_counted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_visit_throttle_last_counted_at (last_counted_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+  }
+
   async function ensureLinksClusterBlock() {
     const blockCountRow = await get('SELECT COUNT(*) AS c FROM blocks WHERE page_id = 1');
     if (!blockCountRow || Number(blockCountRow.c) === 0) return;
@@ -920,6 +951,35 @@ function createApp(passedConfig) {
     const ip = String(ipValue || '').trim();
     if (!ip) return '';
     return crypto.createHash('sha256').update(`${config.sessionSecret}:${ip}`).digest('hex');
+  }
+
+  function getVisitorHash(req) {
+    const ipHash = hashClientIp(clientIp(req));
+    if (ipHash) return ipHash;
+
+    const userAgent = sanitizeText(req.get('user-agent'), 256);
+    const language = sanitizeText(req.get('accept-language'), 120);
+    if (!userAgent && !language) return '';
+    return crypto.createHash('sha256').update(`${config.sessionSecret}:visitor:${userAgent}:${language}`).digest('hex');
+  }
+
+  async function shouldCountVisit(req) {
+    const visitorHash = getVisitorHash(req);
+    if (!visitorHash) return true;
+
+    const insertResult = await runResult('INSERT IGNORE INTO visit_throttle (visitor_hash, last_counted_at) VALUES (?, UTC_TIMESTAMP())', [visitorHash]);
+    if (Number(insertResult?.affectedRows || 0) === 1) return true;
+
+    const updateResult = await runResult(
+      `
+        UPDATE visit_throttle
+        SET last_counted_at = UTC_TIMESTAMP()
+        WHERE visitor_hash = ?
+          AND last_counted_at <= DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? SECOND)
+      `,
+      [visitorHash, config.viewCountThrottleSeconds]
+    );
+    return Number(updateResult?.affectedRows || 0) > 0;
   }
 
   async function recordClickEvent(req, payload) {
@@ -1368,6 +1428,7 @@ function createApp(passedConfig) {
 
     await ensureRedirectsSchema();
     await ensureClickEventsSchema();
+    await ensureVisitThrottleSchema();
 
     const defaults = [
       ['site_title', 'LinkHub'],
@@ -1408,6 +1469,7 @@ function createApp(passedConfig) {
 
     const visits = await get('SELECT `value` FROM metrics WHERE `key` = ?', ['visits']);
     if (!visits) await run('INSERT INTO metrics (`key`, `value`) VALUES (?, ?)', ['visits', 0]);
+    await run('DELETE FROM visit_throttle WHERE last_counted_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL ? DAY)', [config.viewCountRetentionDays]);
 
     const existingAdmin = await get('SELECT id FROM users WHERE username = ?', [config.adminUsername]);
     if (!existingAdmin) {
@@ -1437,7 +1499,9 @@ function createApp(passedConfig) {
   app.get(
     '/',
     asyncHandler(async (req, res) => {
-      await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
+      if (await shouldCountVisit(req)) {
+        await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
+      }
 
       const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 AND is_visible = 1 ORDER BY order_index ASC, id ASC');
       const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
@@ -1508,6 +1572,7 @@ function createApp(passedConfig) {
 
   app.get(
     '/out/:id',
+    redirectLimiter,
     asyncHandler(async (req, res, next) => {
       const id = Number(req.params?.id || 0);
       if (!Number.isInteger(id) || id <= 0) return next();
@@ -2374,6 +2439,7 @@ function createApp(passedConfig) {
 
   app.get(
     '/:slug',
+    redirectLimiter,
     asyncHandler(async (req, res, next) => {
       const slug = sanitizeSlug(req.params.slug);
       if (!slug) return next();

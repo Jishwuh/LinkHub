@@ -1,6 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { normalizeHttpUrl, sanitizeSlug, sanitizeColorHex, sanitizeEmbedHtml, buildTrackedDestinationUrl, suggestIconKeyFromHostname } = require('../server.cjs');
+const {
+  buildConfig,
+  normalizeHttpUrl,
+  sanitizeSlug,
+  sanitizeColorHex,
+  sanitizeEmbedHtml,
+  buildTrackedDestinationUrl,
+  suggestIconKeyFromHostname
+} = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
   assert.equal(normalizeHttpUrl('https://example.com/path'), 'https://example.com/path');
@@ -63,4 +71,29 @@ test('suggestIconKeyFromHostname maps common social domains', () => {
   assert.equal(suggestIconKeyFromHostname('www.youtube.com'), 'youtube');
   assert.equal(suggestIconKeyFromHostname('x.com'), 'x');
   assert.equal(suggestIconKeyFromHostname('github.com'), 'github');
+});
+
+test('buildConfig applies abuse-safety defaults and input bounds', () => {
+  const defaults = buildConfig({});
+  assert.equal(defaults.likeRateLimitWindowMs, 60000);
+  assert.equal(defaults.likeRateLimitMax, 20);
+  assert.equal(defaults.redirectRateLimitWindowMs, 60000);
+  assert.equal(defaults.redirectRateLimitMax, 120);
+  assert.equal(defaults.viewCountThrottleSeconds, 300);
+  assert.equal(defaults.viewCountRetentionDays, 30);
+
+  const clamped = buildConfig({
+    LIKE_RATE_LIMIT_WINDOW_MS: '500',
+    LIKE_RATE_LIMIT_MAX: '-1',
+    REDIRECT_RATE_LIMIT_WINDOW_MS: '999999999',
+    REDIRECT_RATE_LIMIT_MAX: '60000',
+    VIEW_COUNT_THROTTLE_SECONDS: '0',
+    VIEW_COUNT_RETENTION_DAYS: '9999'
+  });
+  assert.equal(clamped.likeRateLimitWindowMs, 60000);
+  assert.equal(clamped.likeRateLimitMax, 20);
+  assert.equal(clamped.redirectRateLimitWindowMs, 60000);
+  assert.equal(clamped.redirectRateLimitMax, 120);
+  assert.equal(clamped.viewCountThrottleSeconds, 300);
+  assert.equal(clamped.viewCountRetentionDays, 30);
 });

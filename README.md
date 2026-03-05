@@ -14,6 +14,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Visit and like counters
 - Open Graph / social share metadata editor
 - CSP + Helmet hardening, rate limiting, and CSRF checks
+- Abuse controls for production traffic (redirect rate limits + view-count dedupe window)
 - CI workflow with syntax checks and tests
 
 ## Recent Updates
@@ -55,6 +56,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Pattern overlay visibility improved
   - Background-mode fields now show only relevant controls
   - Modal overlay hidden-state fix (`[hidden]`) to prevent blocking clicks on admin load
+- Abuse + safety hardening:
+  - Dedicated redirect rate limiting on `/out/:id` and `/:slug`
+  - Configurable like endpoint throttling
+  - View counter dedupe (same visitor only counts once per throttle window)
 
 ## Customization Studio
 
@@ -262,6 +267,9 @@ npm start
 - Session-backed CSRF token is required on admin writes.
 - `TRUST_PROXY` should match your deployment topology.
 - Click analytics stores hashed IP (`sha256` with session-secret salt) for unique counts, not raw IPs.
+- Redirect traffic is rate-limited (`REDIRECT_RATE_LIMIT_*`) to reduce bot abuse.
+- Likes endpoint is throttled (`LIKE_RATE_LIMIT_*`) to reduce spam clicks.
+- Profile visit counting is deduped per visitor hash over a configurable window (`VIEW_COUNT_THROTTLE_SECONDS`) with retention cleanup (`VIEW_COUNT_RETENTION_DAYS`).
 
 ## Quality Checks
 

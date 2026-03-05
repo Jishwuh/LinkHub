@@ -78,8 +78,8 @@
 - [ ] **Private content**
   - [ ] Password-protected page or hidden blocks/links
 
-- [ ] **Abuse + safety**
-  - [ ] Rate limiting on redirects
-  - [ ] Basic anti-spam / throttling for likes + view counting
+- [x] **Abuse + safety**
+  - [x] Rate limiting on redirects
+  - [x] Basic anti-spam / throttling for likes + view counting
 
 ---
