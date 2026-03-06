@@ -915,6 +915,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const colorEl = $('#link-modal-color');
     const colorPreviewEl = $('#link-modal-color-preview');
     const visibleEl = $('#link-modal-visible');
+    const accessPasswordEl = $('#link-modal-access-password');
+    const clearAccessPasswordEl = $('#link-modal-clear-access-password');
+    const ageRestrictedEl = $('#link-modal-age-restricted');
+    const spoilerEl = $('#link-modal-spoiler');
     const enrichBtn = $('#link-modal-enrich-btn');
     const enrichStatusEl = $('#link-modal-enrich-status');
     const enrichPreviewEl = $('#link-modal-enrich-preview');
@@ -1101,6 +1105,9 @@ document.addEventListener('DOMContentLoaded', () => {
       icon_key: item.dataset.icon || '',
       color_hex: normalizeHex(item.dataset.color, '#2a2a2a'),
       is_visible: item.dataset.visible === '1',
+      has_password: item.dataset.hasPassword === '1',
+      is_age_restricted: item.dataset.ageRestricted === '1',
+      is_spoiler: item.dataset.spoiler === '1',
       order_index: Number(item.dataset.order || 0) || 1
     });
 
@@ -1114,6 +1121,11 @@ document.addEventListener('DOMContentLoaded', () => {
         icon_key: overrides.icon_key ?? current.icon_key,
         color_hex: normalizeHex(overrides.color_hex ?? current.color_hex, '#2a2a2a'),
         is_visible: overrides.is_visible == null ? (current.is_visible ? 1 : 0) : asBoolean(overrides.is_visible) ? 1 : 0,
+        is_age_restricted:
+          overrides.is_age_restricted == null ? (current.is_age_restricted ? 1 : 0) : asBoolean(overrides.is_age_restricted) ? 1 : 0,
+        is_spoiler: overrides.is_spoiler == null ? (current.is_spoiler ? 1 : 0) : asBoolean(overrides.is_spoiler) ? 1 : 0,
+        access_password: '',
+        clear_access_password: 0,
         order_index: Number(overrides.order_index || current.order_index || 1)
       };
     };
@@ -1221,12 +1233,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const setLinkItem = (item, link) => {
       const isVisible = asBoolean(link.is_visible);
+      const hasPassword = asBoolean(link.has_password);
+      const isAgeRestricted = asBoolean(link.is_age_restricted);
+      const isSpoiler = asBoolean(link.is_spoiler);
       item.dataset.id = String(link.id || '');
       item.dataset.title = link.title || '';
       item.dataset.url = link.url || '';
       item.dataset.icon = link.icon_key || '';
       item.dataset.color = normalizeHex(link.color_hex, '#2a2a2a');
       item.dataset.visible = isVisible ? '1' : '0';
+      item.dataset.hasPassword = hasPassword ? '1' : '0';
+      item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
+      item.dataset.spoiler = isSpoiler ? '1' : '0';
       if (link.order_index != null) item.dataset.order = String(link.order_index);
 
       item.classList.toggle('is-hidden-link', !isVisible);
@@ -1248,7 +1266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         urlNode.title = 'Click to edit URL (Ctrl/Cmd+click to open)';
       }
 
-      const iconPill = $('.link-pill', item);
+      const iconPill = $('.link-pill-icon', item);
       if (iconPill) {
         if (link.icon_key) {
           iconPill.hidden = false;
@@ -1258,6 +1276,13 @@ document.addEventListener('DOMContentLoaded', () => {
           iconPill.textContent = '';
         }
       }
+
+      const accessPill = $('.link-pill-access', item);
+      if (accessPill) accessPill.hidden = !hasPassword;
+      const agePill = $('.link-pill-age', item);
+      if (agePill) agePill.hidden = !isAgeRestricted;
+      const spoilerPill = $('.link-pill-spoiler', item);
+      if (spoilerPill) spoilerPill.hidden = !isSpoiler;
 
       applyColorChip($('.color-chip', item), link.color_hex || '#2a2a2a');
 
@@ -1280,7 +1305,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-meta">
           <span class="order-badge">#0</span>
-          <span class="link-pill" hidden></span>
+          <span class="link-pill link-pill-icon" hidden></span>
+          <span class="link-pill link-pill-access" hidden>LOCKED</span>
+          <span class="link-pill link-pill-age" hidden>18+</span>
+          <span class="link-pill link-pill-spoiler" hidden>SPOILER</span>
           <span class="color-chip" data-color="#2a2a2a" title="#2a2a2a"></span>
         </div>
         <div class="link-admin-actions">
@@ -1309,6 +1337,10 @@ document.addEventListener('DOMContentLoaded', () => {
       iconEl.value = '';
       colorEl.value = '#2a2a2a';
       visibleEl.checked = true;
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = false;
+      if (spoilerEl) spoilerEl.checked = false;
       syncModalColor();
       syncIconPreview();
       resetEnrichPreview();
@@ -1326,6 +1358,10 @@ document.addEventListener('DOMContentLoaded', () => {
       iconEl.value = item.dataset.icon || '';
       colorEl.value = normalizeHex(item.dataset.color, '#2a2a2a');
       visibleEl.checked = item.dataset.visible !== '0';
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = item.dataset.ageRestricted === '1';
+      if (spoilerEl) spoilerEl.checked = item.dataset.spoiler === '1';
       syncModalColor();
       syncIconPreview();
       resetEnrichPreview();
@@ -1361,6 +1397,10 @@ document.addEventListener('DOMContentLoaded', () => {
         icon_key: iconEl.value,
         color_hex: normalizeHex(colorEl.value),
         is_visible: visibleEl.checked ? 1 : 0,
+        is_age_restricted: ageRestrictedEl?.checked ? 1 : 0,
+        is_spoiler: spoilerEl?.checked ? 1 : 0,
+        access_password: accessPasswordEl?.value || '',
+        clear_access_password: clearAccessPasswordEl?.checked ? 1 : 0,
         order_index: orderIndex
       };
 
@@ -1568,6 +1608,9 @@ document.addEventListener('DOMContentLoaded', () => {
     $$('.color-chip', list).forEach(chip => {
       applyColorChip(chip, chip.dataset.color);
     });
+    $$('.link-admin-item', list).forEach(item => {
+      setLinkItem(item, readLinkFromDataset(item));
+    });
     syncOrderBadges();
     syncModalColor();
     syncIconPreview();
@@ -1584,6 +1627,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const idEl = $('#block-modal-id');
     const typeEl = $('#block-modal-type');
     const visibleEl = $('#block-modal-visible');
+    const accessPasswordEl = $('#block-modal-access-password');
+    const clearAccessPasswordEl = $('#block-modal-clear-access-password');
+    const ageRestrictedEl = $('#block-modal-age-restricted');
+    const spoilerEl = $('#block-modal-spoiler');
 
     const headingTextEl = $('#block-heading-text');
     const headingLevelEl = $('#block-heading-level');
@@ -1709,6 +1756,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (imageCaptionEl) imageCaptionEl.value = '';
       if (embedTitleEl) embedTitleEl.value = '';
       if (embedHtmlEl) embedHtmlEl.value = '';
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = false;
+      if (spoilerEl) spoilerEl.checked = false;
 
       setTypeVisibility('heading');
     };
@@ -1732,6 +1783,9 @@ document.addEventListener('DOMContentLoaded', () => {
         data_obj: dataObj,
         order_index: Number(item.dataset.order || 0) || 1,
         is_visible: item.dataset.visible === '1',
+        has_password: item.dataset.hasPassword === '1',
+        is_age_restricted: item.dataset.ageRestricted === '1',
+        is_spoiler: item.dataset.spoiler === '1',
         summary: blockSummary(type, dataObj)
       };
     };
@@ -1745,6 +1799,10 @@ document.addEventListener('DOMContentLoaded', () => {
         page_id: 1,
         type: block.type,
         is_visible: block.is_visible ? 1 : 0,
+        is_age_restricted: overrides.is_age_restricted == null ? (block.is_age_restricted ? 1 : 0) : asBoolean(overrides.is_age_restricted) ? 1 : 0,
+        is_spoiler: overrides.is_spoiler == null ? (block.is_spoiler ? 1 : 0) : asBoolean(overrides.is_spoiler) ? 1 : 0,
+        access_password: '',
+        clear_access_password: 0,
         order_index: block.order_index,
         heading_text: overrides.heading_text ?? data.text ?? '',
         heading_level: overrides.heading_level ?? data.level ?? 'h2',
@@ -1874,11 +1932,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const data = block.data_obj && typeof block.data_obj === 'object' ? block.data_obj : parseBlockJson(block.data || '');
       const inlineConfig = inlineConfigForBlock(type, data);
       const isVisible = asBoolean(block.is_visible);
+      const hasPassword = asBoolean(block.has_password);
+      const isAgeRestricted = asBoolean(block.is_age_restricted);
+      const isSpoiler = asBoolean(block.is_spoiler);
       item.dataset.id = String(block.id || '');
       item.dataset.type = type;
       item.dataset.visible = isVisible ? '1' : '0';
       item.dataset.order = String(block.order_index || 0);
       item.dataset.json = encodeAttr(JSON.stringify(data || {}));
+      item.dataset.hasPassword = hasPassword ? '1' : '0';
+      item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
+      item.dataset.spoiler = isSpoiler ? '1' : '0';
       item.classList.toggle('is-hidden-link', !isVisible);
 
       const titleNode = $('.link-admin-title', item);
@@ -1899,8 +1963,14 @@ document.addEventListener('DOMContentLoaded', () => {
         summaryNode.title = inlineConfig.summaryField ? 'Click to edit' : '';
       }
 
-      const typePill = $('.link-pill', item);
+      const typePill = $('.link-pill-type', item) || $('.link-pill', item);
       if (typePill) typePill.textContent = type;
+      const accessPill = $('.link-pill-access', item);
+      if (accessPill) accessPill.hidden = !hasPassword;
+      const agePill = $('.link-pill-age', item);
+      if (agePill) agePill.hidden = !isAgeRestricted;
+      const spoilerPill = $('.link-pill-spoiler', item);
+      if (spoilerPill) spoilerPill.hidden = !isSpoiler;
 
       const qrBtn = $('[data-action="qr"]', item);
       if (qrBtn) {
@@ -1925,7 +1995,10 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-meta">
           <span class="order-badge">#0</span>
-          <span class="link-pill"></span>
+          <span class="link-pill link-pill-type"></span>
+          <span class="link-pill link-pill-access" hidden>LOCKED</span>
+          <span class="link-pill link-pill-age" hidden>18+</span>
+          <span class="link-pill link-pill-spoiler" hidden>SPOILER</span>
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
@@ -1970,6 +2043,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (imageCaptionEl) imageCaptionEl.value = String(data.caption || '');
       if (embedTitleEl) embedTitleEl.value = String(data.title || '');
       if (embedHtmlEl) embedHtmlEl.value = String(data.embed_html || '');
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = item.dataset.ageRestricted === '1';
+      if (spoilerEl) spoilerEl.checked = item.dataset.spoiler === '1';
 
       setTypeVisibility(typeEl.value || 'heading');
       modal.open('block');
@@ -2003,6 +2080,10 @@ document.addEventListener('DOMContentLoaded', () => {
         page_id: 1,
         type: typeEl.value,
         is_visible: visibleEl.checked ? 1 : 0,
+        is_age_restricted: ageRestrictedEl?.checked ? 1 : 0,
+        is_spoiler: spoilerEl?.checked ? 1 : 0,
+        access_password: accessPasswordEl?.value || '',
+        clear_access_password: clearAccessPasswordEl?.checked ? 1 : 0,
         order_index: orderIndex,
         heading_text: headingTextEl?.value || '',
         heading_level: headingLevelEl?.value || 'h2',
@@ -2177,13 +2258,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const slugEl = $('#redirect-modal-slug');
     const urlEl = $('#redirect-modal-url');
     const activeEl = $('#redirect-modal-active');
+    const accessPasswordEl = $('#redirect-modal-access-password');
+    const clearAccessPasswordEl = $('#redirect-modal-clear-access-password');
+    const ageRestrictedEl = $('#redirect-modal-age-restricted');
 
     const setRedirectItem = (item, redirect) => {
       const isActive = asBoolean(redirect.is_active);
+      const hasPassword = asBoolean(redirect.has_password);
+      const isAgeRestricted = asBoolean(redirect.is_age_restricted);
       item.dataset.id = String(redirect.id || '');
       item.dataset.slug = redirect.slug || '';
       item.dataset.url = redirect.target_url || '';
       item.dataset.active = isActive ? '1' : '0';
+      item.dataset.hasPassword = hasPassword ? '1' : '0';
+      item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
 
       item.classList.toggle('is-hidden-link', !isActive);
 
@@ -2198,6 +2286,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const pill = $('.link-pill', item);
       if (pill) pill.textContent = isActive ? 'Active' : 'Inactive';
+      const accessPill = $('.link-pill-access', item);
+      if (accessPill) accessPill.hidden = !hasPassword;
+      const agePill = $('.link-pill-age', item);
+      if (agePill) agePill.hidden = !isAgeRestricted;
 
       const toggleBtn = $('[data-action="toggle"]', item);
       if (toggleBtn) {
@@ -2205,6 +2297,15 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleBtn.title = isActive ? 'Disable redirect' : 'Enable redirect';
       }
     };
+
+    const redirectFromDataset = item => ({
+      id: Number(item.dataset.id || 0),
+      slug: item.dataset.slug || '',
+      target_url: item.dataset.url || '',
+      is_active: item.dataset.active === '1',
+      has_password: item.dataset.hasPassword === '1',
+      is_age_restricted: item.dataset.ageRestricted === '1'
+    });
 
     const createRedirectItem = redirect => {
       const article = document.createElement('article');
@@ -2217,6 +2318,8 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="link-admin-meta">
           <span class="link-pill"></span>
+          <span class="link-pill link-pill-access" hidden>LOCKED</span>
+          <span class="link-pill link-pill-age" hidden>18+</span>
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
@@ -2251,6 +2354,9 @@ document.addEventListener('DOMContentLoaded', () => {
       slugEl.value = '';
       urlEl.value = '';
       activeEl.checked = true;
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = false;
       modal.open('redirect');
       slugEl.focus();
     };
@@ -2261,6 +2367,9 @@ document.addEventListener('DOMContentLoaded', () => {
       slugEl.value = item.dataset.slug || '';
       urlEl.value = item.dataset.url || '';
       activeEl.checked = item.dataset.active !== '0';
+      if (accessPasswordEl) accessPasswordEl.value = '';
+      if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
+      if (ageRestrictedEl) ageRestrictedEl.checked = item.dataset.ageRestricted === '1';
       modal.open('redirect');
       slugEl.focus();
     };
@@ -2276,7 +2385,10 @@ document.addEventListener('DOMContentLoaded', () => {
         id,
         slug: slugEl.value,
         target_url: urlEl.value,
-        is_active: activeEl.checked ? 1 : 0
+        is_active: activeEl.checked ? 1 : 0,
+        is_age_restricted: ageRestrictedEl?.checked ? 1 : 0,
+        access_password: accessPasswordEl?.value || '',
+        clear_access_password: clearAccessPasswordEl?.checked ? 1 : 0
       };
 
       try {
@@ -2359,6 +2471,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
 
+    $$('.link-admin-item', list).forEach(item => {
+      setRedirectItem(item, redirectFromDataset(item));
+    });
     sortBySlug();
   }
 

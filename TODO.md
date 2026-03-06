@@ -53,14 +53,6 @@
   - [ ] Schedule blocks/links to show between dates/times
   - [ ] Optional targeting rules: device, geo, referrer, query param
 
-- [ ] **Multiple pages + teams**
-  - [ ] Multiple pages per account (personal, business, campaigns)
-  - [ ] Roles: owner, editor, viewer
-
-- [ ] **Custom domains**
-  - [ ] Support custom domain mapping with CNAME instructions
-  - [ ] SSL strategy (start simple, expand later)
-
 ---
 
 ## “Nice to have” extras (quick wins)
@@ -75,8 +67,10 @@
 - [ ] **Per-slug OpenGraph**
   - [ ] Custom OG/Twitter preview per redirect slug (not just per page)
 
-- [ ] **Private content**
-  - [ ] Password-protected page or hidden blocks/links
+- [x] **Private content**
+  - [x] Password-protected page or hidden blocks/links (If redirect has password, should contain an "unlock" page asking for password to lead them to the content/page).
+  - [x] Age restricted content verification. (Ask if they are 18 or over, if yes, unblur/enable content/block/link). Should be on links itself as well as blocks.
+  - [x] Spoiler blocks/links (click to view, with a cool disintegrating animation to reveal it)
 
 - [x] **Abuse + safety**
   - [x] Rate limiting on redirects

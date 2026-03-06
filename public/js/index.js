@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
+
+  const csrfToken = String($('meta[name="csrf-token"]')?.getAttribute('content') || '').trim();
   const likeBtn = document.getElementById('like-btn');
   const likeCount = document.getElementById('like-count');
   const shareBtn = document.getElementById('share-btn');
@@ -28,6 +32,55 @@ document.addEventListener('DOMContentLoaded', () => {
       card.style.setProperty('--btn-bg', color.toLowerCase());
     }
   });
+
+  const toastEl = $('#public-toast');
+  let toastTimer = 0;
+  const showToast = (message, type = 'success') => {
+    if (!toastEl) return;
+    toastEl.textContent = message;
+    toastEl.classList.remove('show', 'toast-error');
+    if (type === 'error') toastEl.classList.add('toast-error');
+    toastEl.classList.add('show');
+    window.clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => toastEl.classList.remove('show'), 2200);
+  };
+
+  async function parseResponse(response) {
+    const raw = await response.text();
+    let data = null;
+    if (raw) {
+      try {
+        data = JSON.parse(raw);
+      } catch {
+        data = null;
+      }
+    }
+    if (!response.ok) {
+      const message = data?.error || raw || `Request failed (${response.status})`;
+      throw new Error(message);
+    }
+    return data || {};
+  }
+
+  async function postUrlEncoded(url, payload = {}) {
+    const bodyParams = new URLSearchParams();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value != null) bodyParams.append(key, String(value));
+    });
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+        'X-Requested-With': 'fetch',
+        'X-CSRF-Token': csrfToken
+      },
+      body: bodyParams
+    });
+
+    return parseResponse(response);
+  }
 
   function initParticles() {
     if (body.dataset.backgroundMode !== 'particles') return;
@@ -200,4 +253,265 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   refreshStats();
+
+  const modalOverlay = $('#public-access-overlay');
+  const passwordModal = $('#public-password-modal');
+  const ageModal = $('#public-age-modal');
+  const passwordForm = $('#public-password-form');
+  const ageForm = $('#public-age-form');
+  const contextTypeEl = $('#public-context-type');
+  const contextIdEl = $('#public-context-id');
+  const returnToEl = $('#public-return-to');
+  const passwordInputEl = $('#public-password-input');
+  const passwordStatusEl = $('#public-password-status');
+  const ageReturnToEl = $('#public-age-return-to');
+  const ageContextTypeEl = $('#public-age-context-type');
+  const ageContextIdEl = $('#public-age-context-id');
+
+  const allAccessItems = () => $$('.access-item');
+
+  const isPasswordLocked = item => String(item.dataset.passwordLocked || '0') === '1';
+  const isAgeLocked = item => String(item.dataset.ageLocked || '0') === '1';
+  const isSpoiler = item => String(item.dataset.spoiler || '0') === '1';
+  const isRevealed = item => String(item.dataset.revealed || '0') === '1';
+  const spoilerPending = item => isSpoiler(item) && !isRevealed(item);
+  const needsAccessOverlay = item => isPasswordLocked(item) || isAgeLocked(item) || spoilerPending(item);
+
+  function updateInlineOverlay(item) {
+    const inline = $('.access-overlay-inline', item);
+    if (!inline) return;
+    const lockTag = $('.tag-lock', inline);
+    const ageTag = $('.tag-age', inline);
+    const spoilerBtn = $('.tag-spoiler-btn', inline);
+    if (lockTag) lockTag.hidden = !isPasswordLocked(item);
+    if (ageTag) ageTag.hidden = isPasswordLocked(item) || !isAgeLocked(item);
+    if (spoilerBtn) spoilerBtn.hidden = isPasswordLocked(item) || isAgeLocked(item) || !spoilerPending(item);
+    inline.hidden = !needsAccessOverlay(item);
+  }
+
+  function updateBlockOverlay(item) {
+    if (!item.classList.contains('access-item-block')) return;
+    const overlay = Array.from(item.children).find(child => child.classList?.contains('access-overlay'));
+    if (!overlay) return;
+    const actionBtn = $('[data-access-action]', overlay);
+    if (!actionBtn) {
+      overlay.hidden = !needsAccessOverlay(item);
+      return;
+    }
+
+    if (isPasswordLocked(item)) {
+      actionBtn.dataset.accessAction = 'unlock';
+      actionBtn.textContent = 'Unlock';
+      overlay.hidden = false;
+      return;
+    }
+    if (isAgeLocked(item)) {
+      actionBtn.dataset.accessAction = 'age';
+      actionBtn.textContent = '18+ Verify';
+      overlay.hidden = false;
+      return;
+    }
+    if (spoilerPending(item)) {
+      actionBtn.dataset.accessAction = 'spoiler';
+      actionBtn.textContent = 'Spoiler';
+      overlay.hidden = false;
+      return;
+    }
+    overlay.hidden = true;
+  }
+
+  function updateAccessItem(item) {
+    item.classList.toggle('is-password-locked', isPasswordLocked(item));
+    item.classList.toggle('is-age-locked', isAgeLocked(item));
+    item.classList.toggle('is-spoiler', spoilerPending(item));
+    item.classList.toggle('is-revealed', isRevealed(item));
+
+    updateInlineOverlay(item);
+    updateBlockOverlay(item);
+  }
+
+  function setSpoilerRevealed(item, revealed = true) {
+    item.dataset.revealed = revealed ? '1' : '0';
+    updateAccessItem(item);
+  }
+
+  function closePublicModal() {
+    if (!modalOverlay) return;
+    modalOverlay.hidden = true;
+    if (passwordModal) passwordModal.hidden = true;
+    if (ageModal) ageModal.hidden = true;
+    document.body.classList.remove('modal-open');
+  }
+
+  function openPasswordModal(item) {
+    if (!modalOverlay || !passwordModal || !contextTypeEl || !contextIdEl || !returnToEl) return;
+    const contextType = String(item?.dataset?.contextType || '').trim();
+    const contextId = String(item?.dataset?.contextId || item?.dataset?.contextSlug || '').trim();
+    const returnTo = String(item?.dataset?.returnTo || '/').trim() || '/';
+    contextTypeEl.value = contextType;
+    contextIdEl.value = contextId;
+    returnToEl.value = returnTo;
+    if (passwordInputEl) passwordInputEl.value = '';
+    if (passwordStatusEl) passwordStatusEl.textContent = 'Enter password to unlock this content.';
+    modalOverlay.hidden = false;
+    passwordModal.hidden = false;
+    if (ageModal) ageModal.hidden = true;
+    document.body.classList.add('modal-open');
+    passwordInputEl?.focus();
+  }
+
+  function openAgeModal(item) {
+    if (!modalOverlay || !ageModal || !ageReturnToEl || !ageContextTypeEl || !ageContextIdEl) return;
+    const contextType = String(item?.dataset?.contextType || '').trim();
+    const itemReturnTo = String(item?.dataset?.returnTo || window.location.pathname || '/').trim() || '/';
+    ageReturnToEl.value = contextType === 'link' || contextType === 'redirect' ? itemReturnTo : '/__age_local';
+    ageContextTypeEl.value = contextType;
+    ageContextIdEl.value = String(item?.dataset?.contextId || item?.dataset?.contextSlug || '').trim();
+    modalOverlay.hidden = false;
+    ageModal.hidden = false;
+    if (passwordModal) passwordModal.hidden = true;
+    document.body.classList.add('modal-open');
+  }
+
+  function unlockMatchingItems(contextType, contextIdOrSlug) {
+    const type = String(contextType || '').trim();
+    const key = String(contextIdOrSlug || '').trim();
+    allAccessItems().forEach(item => {
+      const itemType = String(item.dataset.contextType || '').trim();
+      const itemKey = String(item.dataset.contextId || item.dataset.contextSlug || '').trim();
+      if (itemType !== type || itemKey !== key) return;
+      item.dataset.passwordLocked = '0';
+      updateAccessItem(item);
+    });
+  }
+
+  function clearAgeLocks(targetContextType = '', targetContextId = '') {
+    const contextType = String(targetContextType || '').trim();
+    const contextId = String(targetContextId || '').trim();
+    allAccessItems().forEach(item => {
+      if (item.dataset.ageLocked !== '1') return;
+      if (contextType && contextType !== 'page') {
+        const itemType = String(item.dataset.contextType || '').trim();
+        const itemId = String(item.dataset.contextId || item.dataset.contextSlug || '').trim();
+        if (itemType !== contextType || itemId !== contextId) return;
+      }
+      item.dataset.ageLocked = '0';
+      updateAccessItem(item);
+    });
+  }
+
+  async function runSpoilerReveal(item) {
+    if (!item || !spoilerPending(item)) return;
+    if (item.classList.contains('is-revealing')) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setSpoilerRevealed(item, true);
+    item.classList.add('is-revealing');
+    await new Promise(resolve => window.setTimeout(resolve, reduced ? 140 : 520));
+    item.classList.remove('is-revealing');
+  }
+
+  allAccessItems().forEach(item => updateAccessItem(item));
+
+  $$('.access-action-btn').forEach(btn => {
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const item = event.currentTarget.closest('.access-item');
+      if (!item) return;
+      const action = String(event.currentTarget.dataset.accessAction || '').trim();
+      if (action === 'unlock') {
+        openPasswordModal(item);
+        return;
+      }
+      if (action === 'age') {
+        openAgeModal(item);
+        return;
+      }
+      if (action === 'spoiler') {
+        void runSpoilerReveal(item);
+      }
+      if (action === 'spoiler-inline') {
+        void runSpoilerReveal(item);
+      }
+    });
+  });
+
+  document.addEventListener('click', event => {
+    const card = event.target.closest('.access-item-link');
+    if (!card) return;
+    if (event.defaultPrevented) return;
+
+    if (isPasswordLocked(card)) {
+      event.preventDefault();
+      openPasswordModal(card);
+      return;
+    }
+    if (isAgeLocked(card)) {
+      event.preventDefault();
+      openAgeModal(card);
+      return;
+    }
+    if (spoilerPending(card)) {
+      event.preventDefault();
+      void runSpoilerReveal(card);
+    }
+  });
+
+  if (passwordForm) {
+    passwordForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      if (!contextTypeEl || !contextIdEl || !returnToEl || !passwordInputEl) return;
+      try {
+        const result = await postUrlEncoded('/access/password-unlock', {
+          _csrf: csrfToken,
+          context_type: contextTypeEl.value,
+          context_id_or_slug: contextIdEl.value,
+          return_to: returnToEl.value,
+          password: passwordInputEl.value
+        });
+        unlockMatchingItems(contextTypeEl.value, contextIdEl.value);
+        closePublicModal();
+        showToast(result.message || 'Unlocked');
+      } catch (error) {
+        if (passwordStatusEl) passwordStatusEl.textContent = error.message || 'Invalid password';
+        showToast(error.message || 'Unable to unlock', 'error');
+      }
+    });
+  }
+
+  if (ageForm) {
+    ageForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      try {
+        const result = await postUrlEncoded('/access/age-verify', {
+          _csrf: csrfToken,
+          return_to: ageReturnToEl?.value || window.location.pathname || '/',
+          context_type: ageContextTypeEl?.value || '',
+          context_id_or_slug: ageContextIdEl?.value || ''
+        });
+        clearAgeLocks(ageContextTypeEl?.value || '', ageContextIdEl?.value || '');
+        closePublicModal();
+        showToast(result.message || 'Age verification complete');
+      } catch (error) {
+        showToast(error.message || 'Unable to verify age', 'error');
+      }
+    });
+  }
+
+  $$('[data-public-modal-close]').forEach(btn => {
+    btn.addEventListener('click', event => {
+      event.preventDefault();
+      closePublicModal();
+    });
+  });
+
+  modalOverlay?.addEventListener('click', event => {
+    if (event.target === modalOverlay) closePublicModal();
+  });
+
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && modalOverlay && !modalOverlay.hidden) {
+      closePublicModal();
+    }
+  });
 });

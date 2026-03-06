@@ -13,6 +13,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Auto link enrichment in admin (URL -> suggested title, icon, preview image)
 - Visit and like counters
 - Open Graph / social share metadata editor
+- Private content controls (password gates, 18+ verification, spoiler reveal)
 - CSP + Helmet hardening, rate limiting, and CSRF checks
 - Abuse controls for production traffic (redirect rate limits + view-count dedupe window)
 - CI workflow with syntax checks and tests
@@ -60,6 +61,12 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Dedicated redirect rate limiting on `/out/:id` and `/:slug`
   - Configurable like endpoint throttling
   - View counter dedupe (same visitor only counts once per throttle window)
+- Private content and reveal system:
+  - Page-level password and 18+ access controls in settings
+  - Per-link/per-block/per-redirect password options in admin modals
+  - Per-link/per-block 18+ toggles + spoiler reveal toggles
+  - Direct unlock page flow for protected redirects/outbound links
+  - Public unlock and age-verify modals without full-page refresh for on-page items
 
 ## Customization Studio
 
@@ -97,6 +104,25 @@ Everything below is configurable from **Admin -> Site Settings**.
   - `pill`
   - `square`
   - `glass`
+
+## Private Content
+
+Available in **Admin -> Site Settings -> Private** and item modals.
+
+- Page-level controls:
+  - Optional password gate for the whole profile page
+  - Optional 18+ verification requirement for the whole profile page
+- Item-level controls:
+  - Links: optional password, 18+ toggle, spoiler reveal toggle
+  - Blocks: optional password, 18+ toggle, spoiler reveal toggle
+  - Redirects: optional password, 18+ toggle
+- Unlock flow:
+  - Protected direct routes (`/out/:id` and `/:slug`) render an unlock/verify page
+  - Protected on-page links/blocks use in-page modal unlock + toast confirmation
+- Spoiler behavior:
+  - First click reveals content with a disintegrating animation
+  - Next click performs normal interaction
+  - Reveal state is persisted in `sessionStorage` for the current browser session
 
 ## Analytics and Growth
 
@@ -270,6 +296,8 @@ npm start
 - Redirect traffic is rate-limited (`REDIRECT_RATE_LIMIT_*`) to reduce bot abuse.
 - Likes endpoint is throttled (`LIKE_RATE_LIMIT_*`) to reduce spam clicks.
 - Profile visit counting is deduped per visitor hash over a configurable window (`VIEW_COUNT_THROTTLE_SECONDS`) with retention cleanup (`VIEW_COUNT_RETENTION_DAYS`).
+- Access passwords are stored as bcrypt hashes (never plaintext), with minimum length enforcement.
+- Age verification is intentionally short-lived and route-scoped (refresh requires re-verification, per current UX).
 
 ## Quality Checks
 

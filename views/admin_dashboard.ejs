@@ -38,6 +38,7 @@
         <button type="button" class="settings-tab" data-tab="background" aria-selected="false">Background</button>
         <button type="button" class="settings-tab" data-tab="design" aria-selected="false">Design</button>
         <button type="button" class="settings-tab" data-tab="share" aria-selected="false">Share</button>
+        <button type="button" class="settings-tab" data-tab="private" aria-selected="false">Private</button>
       </div>
 
       <div class="settings-layout">
@@ -234,6 +235,34 @@
             </div>
             <label>Footer HTML<textarea name="footer_html" rows="3"><%= settings.footer_html || '' %></textarea></label>
           </section>
+
+          <section class="settings-panel" data-panel="private" hidden>
+            <h3>Private Page Controls</h3>
+            <div class="grid">
+              <label>
+                <span class="label-with-tip">Page password
+                  <span class="field-tip" tabindex="0" data-tip="Leave blank to keep the current password.">?</span>
+                </span>
+                <input name="page_access_password" type="password" minlength="6" maxlength="128" placeholder="<%= settings.page_has_password === '1' ? 'Password already set' : 'Optional password' %>">
+              </label>
+              <label>
+                <span class="label-with-tip">Current page password
+                  <span class="field-tip" tabindex="0" data-tip="Shows if a page password is currently configured.">?</span>
+                </span>
+                <input type="text" readonly value="<%= settings.page_has_password === '1' ? 'Configured' : 'Not set' %>">
+              </label>
+            </div>
+            <label class="checkbox">
+              <input type="checkbox" name="clear_page_access_password" value="1">
+              Clear existing page password
+            </label>
+            <input type="hidden" name="page_is_age_restricted" value="0">
+            <label class="checkbox">
+              <input type="checkbox" name="page_is_age_restricted" value="1" <%= settings.page_is_age_restricted === '1' ? 'checked' : '' %>>
+              Require 18+ verification for the entire page
+            </label>
+            <p class="modal-hint">Saving this section updates page-level access immediately.</p>
+          </section>
         </div>
 
         <aside class="settings-sidebar">
@@ -299,7 +328,10 @@
               data-icon="<%= l.icon_key || '' %>"
               data-color="<%= l.color_hex || '' %>"
               data-order="<%= l.order_index %>"
-              data-visible="<%= l.is_visible ? '1' : '0' %>">
+              data-visible="<%= l.is_visible ? '1' : '0' %>"
+              data-has-password="<%= l.has_password ? '1' : '0' %>"
+              data-age-restricted="<%= l.is_age_restricted ? '1' : '0' %>"
+              data-spoiler="<%= l.is_spoiler ? '1' : '0' %>">
               <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
               <div class="link-admin-main">
                 <div class="link-admin-title inline-editable is-editable" data-inline-field="title" tabindex="0" title="Click to edit title"><%= l.title %></div>
@@ -307,7 +339,10 @@
               </div>
               <div class="link-admin-meta">
                 <span class="order-badge" title="Order">#<%= idx + 1 %></span>
-                <% if (l.icon_key) { %><span class="link-pill" title="Icon key"><%= l.icon_key %></span><% } else { %><span class="link-pill" hidden></span><% } %>
+                <% if (l.icon_key) { %><span class="link-pill link-pill-icon" title="Icon key"><%= l.icon_key %></span><% } else { %><span class="link-pill link-pill-icon" hidden></span><% } %>
+                <span class="link-pill link-pill-access" <%= l.has_password ? '' : 'hidden' %>>LOCKED</span>
+                <span class="link-pill link-pill-age" <%= l.is_age_restricted ? '' : 'hidden' %>>18+</span>
+                <span class="link-pill link-pill-spoiler" <%= l.is_spoiler ? '' : 'hidden' %>>SPOILER</span>
                 <span class="color-chip" data-color="<%= l.color_hex || '' %>" title="<%= l.color_hex || '#2a2a2a' %>"></span>
               </div>
               <div class="link-admin-actions">
@@ -339,7 +374,10 @@
               data-type="<%= b.type %>"
               data-json="<%= safeJsonForAttr(JSON.stringify(b.data_obj || {})) %>"
               data-order="<%= b.order_index %>"
-              data-visible="<%= b.is_visible ? '1' : '0' %>">
+              data-visible="<%= b.is_visible ? '1' : '0' %>"
+              data-has-password="<%= b.has_password ? '1' : '0' %>"
+              data-age-restricted="<%= b.is_age_restricted ? '1' : '0' %>"
+              data-spoiler="<%= b.is_spoiler ? '1' : '0' %>">
               <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
               <div class="link-admin-main">
                 <div class="link-admin-title inline-editable" data-inline-field="" tabindex="0"><%= b.type.replace('_', ' ') %></div>
@@ -347,7 +385,10 @@
               </div>
               <div class="link-admin-meta">
                 <span class="order-badge" title="Order">#<%= idx + 1 %></span>
-                <span class="link-pill"><%= b.type %></span>
+                <span class="link-pill link-pill-type"><%= b.type %></span>
+                <span class="link-pill link-pill-access" <%= b.has_password ? '' : 'hidden' %>>LOCKED</span>
+                <span class="link-pill link-pill-age" <%= b.is_age_restricted ? '' : 'hidden' %>>18+</span>
+                <span class="link-pill link-pill-spoiler" <%= b.is_spoiler ? '' : 'hidden' %>>SPOILER</span>
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
@@ -391,7 +432,9 @@
               data-id="<%= r.id %>"
               data-slug="<%= r.slug %>"
               data-url="<%= r.target_url %>"
-              data-active="<%= r.is_active ? '1' : '0' %>">
+              data-active="<%= r.is_active ? '1' : '0' %>"
+              data-has-password="<%= r.has_password ? '1' : '0' %>"
+              data-age-restricted="<%= r.is_age_restricted ? '1' : '0' %>">
               <button type="button" class="icon-action" title="Slug" aria-label="Slug">/</button>
               <div class="link-admin-main">
                 <div class="link-admin-title">/<%= r.slug %></div>
@@ -399,6 +442,8 @@
               </div>
               <div class="link-admin-meta">
                 <span class="link-pill"><%= r.is_active ? 'Active' : 'Inactive' %></span>
+                <span class="link-pill link-pill-access" <%= r.has_password ? '' : 'hidden' %>>LOCKED</span>
+                <span class="link-pill link-pill-age" <%= r.is_age_restricted ? '' : 'hidden' %>>18+</span>
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
@@ -684,7 +729,48 @@
             </div>
           </div>
           <p id="link-modal-enrich-status" class="modal-hint">Paste a URL, then click Suggest to auto-fill details.</p>
-          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="link-modal-visible" checked> Visible</label>
+          <section class="modal-access-panel">
+            <div class="modal-access-header">
+              <h4>Access and Visibility</h4>
+              <p class="modal-hint">Choose who can view this link and how it appears before unlock.</p>
+            </div>
+            <div class="modal-grid modal-grid-2">
+              <label class="modal-field">
+                <span class="modal-label">Access password (optional)</span>
+                <input name="access_password" id="link-modal-access-password" type="password" minlength="6" maxlength="128" placeholder="Leave blank to keep unchanged">
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-compact">
+                <input type="checkbox" name="clear_access_password" id="link-modal-clear-access-password" value="1">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Clear existing password</span>
+                  <span class="modal-checkbox-description">Remove password protection from this link.</span>
+                </span>
+              </label>
+            </div>
+            <div class="modal-toggle-grid">
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_visible" id="link-modal-visible" checked>
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Visible</span>
+                  <span class="modal-checkbox-description">Show this link on the public page.</span>
+                </span>
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_age_restricted" id="link-modal-age-restricted">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Require 18+ verification</span>
+                  <span class="modal-checkbox-description">Blur and gate this link until age is confirmed.</span>
+                </span>
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_spoiler" id="link-modal-spoiler">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Spoiler reveal</span>
+                  <span class="modal-checkbox-description">Hide this link until the visitor reveals it.</span>
+                </span>
+              </label>
+            </div>
+          </section>
           <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
           <div class="modal-actions">
             <button type="submit">Save Link</button>
@@ -785,7 +871,48 @@
             </label>
           </div>
 
-          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_visible" id="block-modal-visible" checked> Visible</label>
+          <section class="modal-access-panel">
+            <div class="modal-access-header">
+              <h4>Access and Visibility</h4>
+              <p class="modal-hint">Apply access controls to this block without changing block content.</p>
+            </div>
+            <div class="modal-grid modal-grid-2">
+              <label class="modal-field">
+                <span class="modal-label">Access password (optional)</span>
+                <input name="access_password" id="block-modal-access-password" type="password" minlength="6" maxlength="128" placeholder="Leave blank to keep unchanged">
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-compact">
+                <input type="checkbox" name="clear_access_password" id="block-modal-clear-access-password" value="1">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Clear existing password</span>
+                  <span class="modal-checkbox-description">Remove password protection from this block.</span>
+                </span>
+              </label>
+            </div>
+            <div class="modal-toggle-grid">
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_visible" id="block-modal-visible" checked>
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Visible</span>
+                  <span class="modal-checkbox-description">Render this block on the public page.</span>
+                </span>
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_age_restricted" id="block-modal-age-restricted">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Require 18+ verification</span>
+                  <span class="modal-checkbox-description">Blur and gate this block until age is confirmed.</span>
+                </span>
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_spoiler" id="block-modal-spoiler">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Spoiler reveal</span>
+                  <span class="modal-checkbox-description">Mask this block until users choose to reveal it.</span>
+                </span>
+              </label>
+            </div>
+          </section>
           <p class="modal-hint">Only fields for the selected block type are shown and submitted.</p>
           <div class="modal-actions">
             <button type="submit">Save Block</button>
@@ -810,8 +937,17 @@
               <span class="modal-label">Target URL</span>
               <input name="target_url" id="redirect-modal-url" type="url" placeholder="https://..." required>
             </label>
+            <label class="modal-field">
+              <span class="modal-label">Access password (optional)</span>
+              <input name="access_password" id="redirect-modal-access-password" type="password" minlength="6" maxlength="128" placeholder="Leave blank to keep unchanged">
+            </label>
+            <label class="checkbox modal-checkbox">
+              <input type="checkbox" name="clear_access_password" id="redirect-modal-clear-access-password" value="1">
+              Clear existing password
+            </label>
           </div>
           <label class="checkbox modal-checkbox"><input type="checkbox" name="is_active" id="redirect-modal-active" checked> Active</label>
+          <label class="checkbox modal-checkbox"><input type="checkbox" name="is_age_restricted" id="redirect-modal-age-restricted"> Require 18+ verification</label>
           <p class="modal-hint">Slugs are lowercase and become available at <code>/your-slug</code>.</p>
           <div class="modal-actions">
             <button type="submit">Save Redirect</button>

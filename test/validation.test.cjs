@@ -7,7 +7,10 @@ const {
   sanitizeColorHex,
   sanitizeEmbedHtml,
   buildTrackedDestinationUrl,
-  suggestIconKeyFromHostname
+  suggestIconKeyFromHostname,
+  sanitizeInternalReturnPath,
+  isValidAccessPassword,
+  hasPasswordGate
 } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
@@ -25,6 +28,7 @@ test('sanitizeSlug enforces a safe slug format', () => {
   assert.equal(sanitizeSlug('My-Slug_12'), 'my-slug_12');
   assert.equal(sanitizeSlug('/admin/'), '');
   assert.equal(sanitizeSlug('/out/'), '');
+  assert.equal(sanitizeSlug('/unlock/'), '');
   assert.equal(sanitizeSlug('a'.repeat(81)), '');
   assert.equal(sanitizeSlug('bad slug'), '');
 });
@@ -96,4 +100,23 @@ test('buildConfig applies abuse-safety defaults and input bounds', () => {
   assert.equal(clamped.redirectRateLimitMax, 120);
   assert.equal(clamped.viewCountThrottleSeconds, 300);
   assert.equal(clamped.viewCountRetentionDays, 30);
+});
+
+test('sanitizeInternalReturnPath allows only local absolute paths', () => {
+  assert.equal(sanitizeInternalReturnPath('/out/12?x=1'), '/out/12?x=1');
+  assert.equal(sanitizeInternalReturnPath('https://evil.example.com'), '/');
+  assert.equal(sanitizeInternalReturnPath('//evil.example.com'), '/');
+});
+
+test('isValidAccessPassword enforces minimum and maximum length', () => {
+  assert.equal(isValidAccessPassword('12345'), false);
+  assert.equal(isValidAccessPassword('123456'), true);
+  assert.equal(isValidAccessPassword('a'.repeat(128)), true);
+  assert.equal(isValidAccessPassword('a'.repeat(129)), false);
+});
+
+test('hasPasswordGate detects configured hash fields', () => {
+  assert.equal(hasPasswordGate({ access_password_hash: '' }), false);
+  assert.equal(hasPasswordGate({ access_password_hash: '$2b$12$abc' }), true);
+  assert.equal(hasPasswordGate({ page_access_password_hash: '$2b$12$abc' }), true);
 });

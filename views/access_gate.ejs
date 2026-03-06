@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= title || 'Protected Content' %></title>
+  <link rel="stylesheet" href="/static/css/site.css">
+</head>
+
+<body>
+  <main class="auth-container">
+    <section class="form cardy">
+      <h1><%= title || 'Protected Content' %></h1>
+      <% if (subtitle) { %>
+        <p class="muted"><%= subtitle %></p>
+      <% } %>
+
+      <% if (mode === 'age') { %>
+        <form method="POST" action="/access/age-verify">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="return_to" value="<%= returnTo %>">
+          <button type="submit">I am 18 or over</button>
+        </form>
+      <% } else { %>
+        <form method="POST" action="/access/password-unlock">
+          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+          <input type="hidden" name="context_type" value="<%= contextType %>">
+          <input type="hidden" name="context_id_or_slug" value="<%= contextIdOrSlug %>">
+          <input type="hidden" name="return_to" value="<%= returnTo %>">
+          <label>Password
+            <input name="password" type="password" minlength="6" maxlength="128" autocomplete="current-password" required>
+          </label>
+          <button type="submit">Unlock</button>
+        </form>
+      <% } %>
+    </section>
+  </main>
+</body>
+
+</html>

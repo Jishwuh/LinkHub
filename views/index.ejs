@@ -20,6 +20,7 @@
   <meta name="twitter:description" content="<%= settings.meta_description || 'All my links in one place!' %>">
   <meta name="twitter:image" content="<%= settings.og_image_abs || '/static/og-default.jpg' %>">
   <meta name="theme-color" content="<%= settings.theme_color || '#ff4d6d' %>">
+  <meta name="csrf-token" content="<%= csrfToken || '' %>">
 
   <link rel="stylesheet" href="/static/css/site.css">
 </head>
@@ -31,7 +32,8 @@
   data-background-blur="<%= settings.background_blur %>"
   data-background-mode="<%= settings.background_mode %>"
   data-particles-density="<%= settings.particles_density %>"
-  data-particles-speed="<%= settings.particles_speed %>">
+  data-particles-speed="<%= settings.particles_speed %>"
+  data-age-verified="<%= viewerAccess?.age_verified ? '1' : '0' %>">
   <div id="bg" class="bg-<%= settings.background_mode %> gradient-<%= settings.background_gradient %> pattern-<%= settings.background_pattern %>">
     <% if (settings.background_mode === 'youtube' && settings.bg_youtube_id) { %>
       <div class="video-bg video-bg-frame">
@@ -41,27 +43,27 @@
           frameborder="0"
           title="Background video"></iframe>
       </div>
-      <% } %>
+    <% } %>
 
-      <% if (settings.background_mode === 'image' && settings.background_image_src) { %>
-        <div class="image-bg">
-          <img src="<%= settings.background_image_src %>" alt="Background" loading="lazy">
-        </div>
-        <% } %>
+    <% if (settings.background_mode === 'image' && settings.background_image_src) { %>
+      <div class="image-bg">
+        <img src="<%= settings.background_image_src %>" alt="Background" loading="lazy">
+      </div>
+    <% } %>
 
-          <% if (settings.background_mode === 'video' && settings.background_video_src) { %>
-            <div class="video-bg video-file-bg">
-              <video autoplay muted loop playsinline preload="metadata">
-                <source src="<%= settings.background_video_src %>">
-              </video>
-            </div>
-            <% } %>
+    <% if (settings.background_mode === 'video' && settings.background_video_src) { %>
+      <div class="video-bg video-file-bg">
+        <video autoplay muted loop playsinline preload="metadata">
+          <source src="<%= settings.background_video_src %>">
+        </video>
+      </div>
+    <% } %>
 
-              <% if (settings.background_mode === 'particles') { %>
-                <canvas id="particle-bg" aria-hidden="true"></canvas>
-                <% } %>
+    <% if (settings.background_mode === 'particles') { %>
+      <canvas id="particle-bg" aria-hidden="true"></canvas>
+    <% } %>
 
-                  <div class="overlay"></div>
+    <div class="overlay"></div>
   </div>
 
   <div class="container">
@@ -69,9 +71,9 @@
       <div class="avatar-wrap">
         <% if (settings.avatar_path) { %>
           <img class="avatar" src="<%= settings.avatar_path %>" alt="Avatar">
-          <% } else { %>
-            <div class="avatar placeholder"><%= settings.avatar_emoji || '🙂' %></div>
-            <% } %>
+        <% } else { %>
+          <div class="avatar placeholder"><%= settings.avatar_emoji || '🙂' %></div>
+        <% } %>
       </div>
       <div class="identity">
         <div class="handle"><%= settings.handle || '@handle' %></div>
@@ -79,7 +81,7 @@
       </div>
       <% if (settings.bio) { %>
         <p class="bio"><%- settings.bio %></p>
-        <% } %>
+      <% } %>
     </header>
 
     <div class="topbar">
@@ -97,76 +99,183 @@
     <% if (blocks && blocks.length) { %>
       <section class="custom-blocks">
         <% blocks.forEach(b => { %>
-          <% if (b.type === 'heading') { %>
-            <article class="block block-heading">
-              <% if (b.data_obj.level === 'h1') { %>
-                <h1><%= b.data_obj.text %></h1>
-              <% } else if (b.data_obj.level === 'h3') { %>
-                <h3><%= b.data_obj.text %></h3>
-              <% } else { %>
-                <h2><%= b.data_obj.text %></h2>
+          <% const blockPasswordLocked = Number(b.password_locked || 0) === 1; %>
+          <% const blockAgeLocked = Number(b.age_locked || 0) === 1; %>
+          <% const blockSpoiler = Number(b.is_spoiler || 0) === 1; %>
+          <% const blockOverlayVisible = blockPasswordLocked || blockAgeLocked || blockSpoiler; %>
+          <% const blockAccessClass = `${blockPasswordLocked ? 'is-password-locked' : ''} ${blockAgeLocked ? 'is-age-locked' : ''} ${blockSpoiler ? 'is-spoiler' : ''}`.trim(); %>
+
+          <div
+            class="access-item access-item-block <%= blockAccessClass %>"
+            data-context-type="block"
+            data-context-id="<%= b.id %>"
+            data-context-slug=""
+            data-return-to="/"
+            data-password-locked="<%= blockPasswordLocked ? '1' : '0' %>"
+            data-age-locked="<%= blockAgeLocked ? '1' : '0' %>"
+            data-spoiler="<%= blockSpoiler ? '1' : '0' %>"
+            data-revealed="0">
+            <% if (b.type === 'heading') { %>
+              <article class="block block-heading">
+                <% if (blockPasswordLocked) { %>
+                  <h2>Locked heading</h2>
+                <% } else if (b.data_obj.level === 'h1') { %>
+                  <h1><%= b.data_obj.text %></h1>
+                <% } else if (b.data_obj.level === 'h3') { %>
+                  <h3><%= b.data_obj.text %></h3>
+                <% } else { %>
+                  <h2><%= b.data_obj.text %></h2>
+                <% } %>
+              </article>
+            <% } %>
+
+            <% if (b.type === 'rich_text') { %>
+              <article class="block block-richtext card">
+                <% if (blockPasswordLocked) { %>
+                  <div class="block-richtext-content"><p>Locked content</p></div>
+                <% } else { %>
+                  <div class="block-richtext-content"><%- b.data_obj.html %></div>
+                <% } %>
+              </article>
+            <% } %>
+
+            <% if (b.type === 'button_link') { %>
+              <a
+                class="block block-button-link link-card block-btn-<%= b.data_obj.style %>"
+                href="<%= b.data_obj.url %>"
+                <%= b.data_obj.new_tab ? 'target="_blank" rel="noopener noreferrer"' : '' %>>
+                <span class="label"><%= blockPasswordLocked ? 'Locked button' : b.data_obj.label %></span>
+                <span class="link-arrow" aria-hidden="true">↗</span>
+              </a>
+            <% } %>
+
+            <% if (b.type === 'links_cluster') { %>
+              <section class="block block-links-cluster">
+                <div class="links">
+                  <% links.forEach(l => { %>
+                    <% const linkPasswordLocked = Number(l.password_locked || 0) === 1; %>
+                    <% const linkAgeLocked = Number(l.age_locked || 0) === 1; %>
+                    <% const linkSpoiler = Number(l.is_spoiler || 0) === 1; %>
+                    <% const linkOverlayVisible = linkPasswordLocked || linkAgeLocked || linkSpoiler; %>
+                    <% const linkAccessClass = `${linkPasswordLocked ? 'is-password-locked' : ''} ${linkAgeLocked ? 'is-age-locked' : ''} ${linkSpoiler ? 'is-spoiler' : ''}`.trim(); %>
+                    <a
+                      class="link-card access-item access-item-link <%= linkAccessClass %>"
+                      data-color="<%= l.color_hex || '' %>"
+                      data-context-type="link"
+                      data-context-id="<%= l.id %>"
+                      data-context-slug=""
+                      data-return-to="/out/<%= l.id %>"
+                      data-password-locked="<%= linkPasswordLocked ? '1' : '0' %>"
+                      data-age-locked="<%= linkAgeLocked ? '1' : '0' %>"
+                      data-spoiler="<%= linkSpoiler ? '1' : '0' %>"
+                      data-revealed="0"
+                      href="/out/<%= l.id %>"
+                      target="_blank"
+                      rel="noopener noreferrer">
+                      <% if (l.icon_key) { %>
+                        <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
+                      <% } %>
+                      <span class="label"><%= l.title %></span>
+                      <span class="link-arrow" aria-hidden="true">↗</span>
+                      <% if (linkOverlayVisible) { %>
+                        <span class="access-overlay access-overlay-inline">
+                          <span class="access-overlay-tag tag-lock" <%= linkPasswordLocked ? '' : 'hidden' %>>Locked</span>
+                          <span class="access-overlay-tag tag-age" <%= (!linkPasswordLocked && linkAgeLocked) ? '' : 'hidden' %>>18+</span>
+                          <button
+                            type="button"
+                            class="access-overlay-tag access-action-btn tag-spoiler-btn"
+                            data-access-action="spoiler-inline"
+                            aria-label="Reveal spoiler content"
+                            <%= (!linkPasswordLocked && !linkAgeLocked && linkSpoiler) ? '' : 'hidden' %>>
+                            Spoiler
+                          </button>
+                        </span>
+                      <% } %>
+                    </a>
+                  <% }) %>
+                </div>
+              </section>
+            <% } %>
+
+            <% if (b.type === 'image') { %>
+              <figure class="block block-image card">
+                <% if (blockPasswordLocked) { %>
+                  <div class="block-locked-placeholder">Locked image block</div>
+                <% } else { %>
+                  <img src="<%= b.data_obj.src %>" alt="<%= b.data_obj.alt || '' %>" loading="lazy">
+                  <% if (b.data_obj.caption) { %><figcaption><%= b.data_obj.caption %></figcaption><% } %>
+                <% } %>
+              </figure>
+            <% } %>
+
+            <% if (b.type === 'embed') { %>
+              <article class="block block-embed card">
+                <% if (b.data_obj.title) { %><h3><%= b.data_obj.title %></h3><% } %>
+                <% if (blockPasswordLocked) { %>
+                  <div class="block-locked-placeholder">Locked embed block</div>
+                <% } else { %>
+                  <div class="ratio"><%- b.data_obj.embed_html %></div>
+                <% } %>
+              </article>
+            <% } %>
+
+              <% if (blockOverlayVisible) { %>
+                <div class="access-overlay">
+                  <% if (blockPasswordLocked) { %>
+                    <button type="button" class="access-action-btn" data-access-action="unlock">Unlock</button>
+                  <% } else if (blockAgeLocked) { %>
+                    <button type="button" class="access-action-btn" data-access-action="age">18+ Verify</button>
+                  <% } else if (blockSpoiler) { %>
+                    <button type="button" class="access-action-btn" data-access-action="spoiler">Spoiler</button>
+                  <% } %>
+                </div>
               <% } %>
-            </article>
-          <% } %>
-
-          <% if (b.type === 'rich_text') { %>
-            <article class="block block-richtext card">
-              <div class="block-richtext-content"><%- b.data_obj.html %></div>
-            </article>
-          <% } %>
-
-          <% if (b.type === 'button_link') { %>
-            <a
-              class="block block-button-link link-card block-btn-<%= b.data_obj.style %>"
-              href="<%= b.data_obj.url %>"
-              <%= b.data_obj.new_tab ? 'target="_blank" rel="noopener noreferrer"' : '' %>>
-              <span class="label"><%= b.data_obj.label %></span>
-              <span class="link-arrow" aria-hidden="true">↗</span>
-            </a>
-          <% } %>
-
-          <% if (b.type === 'links_cluster') { %>
-            <section class="block block-links-cluster">
-              <div class="links">
-                <% links.forEach(l => { %>
-                  <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
-                    <% if (l.icon_key) { %>
-                      <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
-                    <% } %>
-                    <span class="label"><%= l.title %></span>
-                    <span class="link-arrow" aria-hidden="true">↗</span>
-                  </a>
-                <% }) %>
-              </div>
-            </section>
-          <% } %>
-
-          <% if (b.type === 'image') { %>
-            <figure class="block block-image card">
-              <img src="<%= b.data_obj.src %>" alt="<%= b.data_obj.alt || '' %>" loading="lazy">
-              <% if (b.data_obj.caption) { %><figcaption><%= b.data_obj.caption %></figcaption><% } %>
-            </figure>
-          <% } %>
-
-          <% if (b.type === 'embed') { %>
-            <article class="block block-embed card">
-              <% if (b.data_obj.title) { %><h3><%= b.data_obj.title %></h3><% } %>
-              <div class="ratio"><%- b.data_obj.embed_html %></div>
-            </article>
-          <% } %>
+          </div>
         <% }) %>
       </section>
     <% } else { %>
       <main class="links">
         <% links.forEach(l => { %>
-          <a class="link-card" data-color="<%= l.color_hex || '' %>" href="/out/<%= l.id %>" target="_blank" rel="noopener noreferrer">
+          <% const linkPasswordLocked = Number(l.password_locked || 0) === 1; %>
+          <% const linkAgeLocked = Number(l.age_locked || 0) === 1; %>
+          <% const linkSpoiler = Number(l.is_spoiler || 0) === 1; %>
+          <% const linkOverlayVisible = linkPasswordLocked || linkAgeLocked || linkSpoiler; %>
+          <% const linkAccessClass = `${linkPasswordLocked ? 'is-password-locked' : ''} ${linkAgeLocked ? 'is-age-locked' : ''} ${linkSpoiler ? 'is-spoiler' : ''}`.trim(); %>
+          <a
+            class="link-card access-item access-item-link <%= linkAccessClass %>"
+            data-color="<%= l.color_hex || '' %>"
+            data-context-type="link"
+            data-context-id="<%= l.id %>"
+            data-context-slug=""
+            data-return-to="/out/<%= l.id %>"
+            data-password-locked="<%= linkPasswordLocked ? '1' : '0' %>"
+            data-age-locked="<%= linkAgeLocked ? '1' : '0' %>"
+            data-spoiler="<%= linkSpoiler ? '1' : '0' %>"
+            data-revealed="0"
+            href="/out/<%= l.id %>"
+            target="_blank"
+            rel="noopener noreferrer">
             <% if (l.icon_key) { %>
               <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
-              <% } %>
-                <span class="label"><%= l.title %></span>
-                <span class="link-arrow" aria-hidden="true">↗</span>
+            <% } %>
+            <span class="label"><%= l.title %></span>
+            <span class="link-arrow" aria-hidden="true">↗</span>
+            <% if (linkOverlayVisible) { %>
+              <span class="access-overlay access-overlay-inline">
+                <span class="access-overlay-tag tag-lock" <%= linkPasswordLocked ? '' : 'hidden' %>>Locked</span>
+                <span class="access-overlay-tag tag-age" <%= (!linkPasswordLocked && linkAgeLocked) ? '' : 'hidden' %>>18+</span>
+                <button
+                  type="button"
+                  class="access-overlay-tag access-action-btn tag-spoiler-btn"
+                  data-access-action="spoiler-inline"
+                  aria-label="Reveal spoiler content"
+                  <%= (!linkPasswordLocked && !linkAgeLocked && linkSpoiler) ? '' : 'hidden' %>>
+                  Spoiler
+                </button>
+              </span>
+            <% } %>
           </a>
-          <% }) %>
+        <% }) %>
       </main>
 
       <% if (embeds && embeds.length) { %>
@@ -176,12 +285,58 @@
               <h3><%= e.title %></h3>
               <div class="ratio"><%- e.embed_html %></div>
             </article>
-            <% }) %>
+          <% }) %>
         </section>
       <% } %>
     <% } %>
 
-        <footer class="footer"><%- footerHtml %></footer>
+    <footer class="footer"><%- footerHtml %></footer>
+  </div>
+
+  <div id="public-toast" class="admin-toast" role="status" aria-live="polite"></div>
+
+  <div id="public-access-overlay" class="modal-overlay" hidden>
+    <div class="modal-shell">
+      <section id="public-password-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3>Unlock Content</h3>
+          <button type="button" class="icon-action" data-public-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="public-password-form" class="modal-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>">
+          <input type="hidden" name="context_type" id="public-context-type" value="">
+          <input type="hidden" name="context_id_or_slug" id="public-context-id" value="">
+          <input type="hidden" name="return_to" id="public-return-to" value="/">
+          <label class="modal-field">
+            <span class="modal-label">Password</span>
+            <input name="password" id="public-password-input" type="password" minlength="6" maxlength="128" autocomplete="current-password" required>
+          </label>
+          <p id="public-password-status" class="modal-hint">Enter password to unlock this content.</p>
+          <div class="modal-actions">
+            <button type="submit">Unlock</button>
+            <button type="button" class="btn-secondary" data-public-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="public-age-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3>Age Verification</h3>
+          <button type="button" class="icon-action" data-public-modal-close aria-label="Close">✕</button>
+        </div>
+        <form id="public-age-form" class="modal-form">
+          <input type="hidden" name="_csrf" value="<%= csrfToken || '' %>">
+          <input type="hidden" name="return_to" id="public-age-return-to" value="/">
+          <input type="hidden" name="context_type" id="public-age-context-type" value="">
+          <input type="hidden" name="context_id_or_slug" id="public-age-context-id" value="">
+          <p class="modal-hint">You must confirm you are 18 or over to view this content.</p>
+          <div class="modal-actions">
+            <button type="submit">I am 18 or over</button>
+            <button type="button" class="btn-secondary" data-public-modal-close>Cancel</button>
+          </div>
+        </form>
+      </section>
+    </div>
   </div>
 
   <script src="/static/js/index.js" defer></script>

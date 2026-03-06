@@ -16,7 +16,7 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: process.env.ENV_FILE || '.env' });
 
-const RESERVED_SLUGS = new Set(['admin', 'static', 'api', 'debug', 'out']);
+const RESERVED_SLUGS = new Set(['admin', 'static', 'api', 'debug', 'out', 'unlock']);
 const ALLOWED_EMBED_HOSTNAMES = [
   'www.youtube.com',
   'youtube.com',
@@ -60,6 +60,10 @@ const BLOCK_TYPES = ['heading', 'rich_text', 'button_link', 'image', 'embed', 'l
 const BLOCK_HEADING_LEVELS = ['h1', 'h2', 'h3'];
 const BLOCK_BUTTON_STYLES = ['solid', 'outline'];
 const UTM_PARAM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
+const ACCESS_CONTEXT_TYPES = ['page', 'link', 'block', 'redirect'];
+const MIN_ACCESS_PASSWORD_LENGTH = 6;
+const MAX_ACCESS_PASSWORD_LENGTH = 128;
+const AGE_VERIFY_UNLOCK_MAX_AGE_MS = 2 * 60 * 1000;
 let countryNameResolver = null;
 try {
   countryNameResolver = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -68,6 +72,10 @@ try {
 }
 
 function parseBoolean(value, defaultValue = false) {
+  if (Array.isArray(value)) {
+    if (!value.length) return defaultValue;
+    return parseBoolean(value[value.length - 1], defaultValue);
+  }
   if (value == null || value === '') return defaultValue;
   const normalized = String(value).trim().toLowerCase();
   if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
@@ -183,6 +191,55 @@ function sanitizeEmoji(value, fallback) {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
   return Array.from(raw).slice(0, 4).join('');
+}
+
+function parseCookieMap(cookieHeader) {
+  const out = {};
+  const raw = String(cookieHeader || '');
+  if (!raw) return out;
+  for (const part of raw.split(';')) {
+    const piece = String(part || '').trim();
+    if (!piece) continue;
+    const eqIdx = piece.indexOf('=');
+    if (eqIdx <= 0) continue;
+    const key = piece.slice(0, eqIdx).trim();
+    const valueRaw = piece.slice(eqIdx + 1).trim();
+    if (!key) continue;
+    try {
+      out[key] = decodeURIComponent(valueRaw);
+    } catch {
+      out[key] = valueRaw;
+    }
+  }
+  return out;
+}
+
+function sanitizeInternalReturnPath(value, fallback = '/') {
+  const raw = String(value || '').trim();
+  if (!raw) return fallback;
+  if (!raw.startsWith('/')) return fallback;
+  if (raw.startsWith('//')) return fallback;
+  if (/[\r\n]/.test(raw)) return fallback;
+  return raw.slice(0, 2048);
+}
+
+function sanitizeAccessContextType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ACCESS_CONTEXT_TYPES.includes(normalized) ? normalized : '';
+}
+
+function sanitizeAccessPassword(value) {
+  return String(value || '').trim();
+}
+
+function isValidAccessPassword(value) {
+  const normalized = sanitizeAccessPassword(value);
+  return normalized.length >= MIN_ACCESS_PASSWORD_LENGTH && normalized.length <= MAX_ACCESS_PASSWORD_LENGTH;
+}
+
+function hasPasswordGate(row) {
+  const hash = String(row?.access_password_hash || row?.page_access_password_hash || '').trim();
+  return hash.length > 0;
 }
 
 function normalizeHttpUrl(value) {
@@ -687,11 +744,14 @@ function normalizeBlockRow(row) {
   const dataObj = normalizeBlockData(type, row.data);
   if (!dataObj) return null;
   return {
-    ...row,
+    id: Number(row.id || 0),
     page_id: Number(row.page_id || 1),
     type,
     order_index: Number(row.order_index || 0),
     is_visible: Number(row.is_visible || 0) ? 1 : 0,
+    has_password: hasPasswordGate(row) ? 1 : 0,
+    is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0,
+    is_spoiler: parseBoolean(row.is_spoiler, false) ? 1 : 0,
     data_obj: dataObj,
     summary: blockSummary(type, dataObj)
   };
@@ -817,6 +877,13 @@ function createApp(passedConfig) {
     standardHeaders: true,
     legacyHeaders: false
   });
+  const unlockLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 40,
+    message: 'Too many unlock attempts. Please retry later.',
+    standardHeaders: true,
+    legacyHeaders: false
+  });
 
   const uploadsDir = path.join(__dirname, 'public', 'uploads');
   fs.mkdirSync(uploadsDir, { recursive: true });
@@ -873,6 +940,32 @@ function createApp(passedConfig) {
     }
   }
 
+  async function ensureTableColumns(tableName, definitions) {
+    const cols = await q(`SHOW COLUMNS FROM \`${tableName}\``).catch(() => []);
+    if (!Array.isArray(cols) || cols.length === 0) return;
+    const names = new Set(cols.map(c => c.Field));
+    for (const [name, ddl] of definitions) {
+      if (names.has(name)) continue;
+      await run(`ALTER TABLE \`${tableName}\` ADD COLUMN ${ddl}`);
+    }
+  }
+
+  async function ensureLinksSchema() {
+    await ensureTableColumns('links', [
+      ['access_password_hash', 'access_password_hash VARCHAR(255) NULL AFTER color_hex'],
+      ['is_age_restricted', 'is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash'],
+      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted']
+    ]);
+  }
+
+  async function ensureBlocksSchema() {
+    await ensureTableColumns('blocks', [
+      ['access_password_hash', 'access_password_hash VARCHAR(255) NULL AFTER is_visible'],
+      ['is_age_restricted', 'is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash'],
+      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted']
+    ]);
+  }
+
   async function ensureRedirectsSchema() {
     const cols = await q('SHOW COLUMNS FROM redirects').catch(() => []);
     if (!Array.isArray(cols) || cols.length === 0) return;
@@ -880,6 +973,12 @@ function createApp(passedConfig) {
     const names = cols.map(c => c.Field);
     if (!names.includes('is_active')) {
       await run('ALTER TABLE redirects ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1');
+    }
+    if (!names.includes('access_password_hash')) {
+      await run('ALTER TABLE redirects ADD COLUMN access_password_hash VARCHAR(255) NULL AFTER is_active');
+    }
+    if (!names.includes('is_age_restricted')) {
+      await run('ALTER TABLE redirects ADD COLUMN is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash');
     }
 
     const idx = await q('SHOW INDEX FROM redirects WHERE Key_name = "uq_redirects_slug"').catch(() => []);
@@ -951,6 +1050,192 @@ function createApp(passedConfig) {
     const ip = String(ipValue || '').trim();
     if (!ip) return '';
     return crypto.createHash('sha256').update(`${config.sessionSecret}:${ip}`).digest('hex');
+  }
+
+  function getSessionUnlockStore(req) {
+    if (!req.session) return null;
+    if (!req.session.access_unlocks || typeof req.session.access_unlocks !== 'object') {
+      req.session.access_unlocks = { page: 0, link: {}, block: {}, redirect: {} };
+    }
+    const store = req.session.access_unlocks;
+    if (!store.link || typeof store.link !== 'object') store.link = {};
+    if (!store.block || typeof store.block !== 'object') store.block = {};
+    if (!store.redirect || typeof store.redirect !== 'object') store.redirect = {};
+    return store;
+  }
+
+  function normalizeUnlockKey(contextType, idOrSlug) {
+    const kind = sanitizeAccessContextType(contextType);
+    if (kind === 'page') return 'page';
+    if (kind === 'redirect') return sanitizeSlug(idOrSlug);
+    const parsed = Number.parseInt(String(idOrSlug || ''), 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) return '';
+    return String(parsed);
+  }
+
+  function isUnlocked(req, contextType, idOrSlug) {
+    const store = getSessionUnlockStore(req);
+    if (!store) return false;
+    const kind = sanitizeAccessContextType(contextType);
+    const key = normalizeUnlockKey(kind, idOrSlug);
+    if (!kind || !key) return false;
+    if (kind === 'page') return Number(store.page || 0) > 0;
+    return Number(store[kind]?.[key] || 0) > 0;
+  }
+
+  function markUnlocked(req, contextType, idOrSlug) {
+    const store = getSessionUnlockStore(req);
+    if (!store) return;
+    const kind = sanitizeAccessContextType(contextType);
+    const key = normalizeUnlockKey(kind, idOrSlug);
+    if (!kind || !key) return;
+    const now = Date.now();
+    if (kind === 'page') {
+      store.page = now;
+      return;
+    }
+    store[kind][key] = now;
+  }
+
+  function getAgeUnlockStore(req) {
+    if (!req.session) return null;
+    if (!req.session.age_unlock_paths || typeof req.session.age_unlock_paths !== 'object') {
+      req.session.age_unlock_paths = {};
+    }
+    return req.session.age_unlock_paths;
+  }
+
+  function isAgeVerified(req) {
+    if (req._ageVerifiedCached != null) {
+      return req._ageVerifiedCached === true;
+    }
+
+    const store = getAgeUnlockStore(req);
+    const now = Date.now();
+    if (!store) {
+      req._ageVerifiedCached = false;
+      return false;
+    }
+
+    for (const [pathKey, expiresAt] of Object.entries(store)) {
+      if (!pathKey || Number(expiresAt || 0) < now) {
+        delete store[pathKey];
+      }
+    }
+
+    const currentPath = sanitizeInternalReturnPath(req.originalUrl || req.path || '/', '/');
+    const expiresAt = Number(store[currentPath] || 0);
+    const ok = Number.isFinite(expiresAt) && expiresAt >= now;
+    if (ok) {
+      delete store[currentPath];
+    }
+    req._ageVerifiedCached = ok;
+    return ok;
+  }
+
+  function markAgeVerified(req, _res, returnTo) {
+    const store = getAgeUnlockStore(req);
+    if (!store) return;
+    const path = sanitizeInternalReturnPath(returnTo, '/');
+    store[path] = Date.now() + AGE_VERIFY_UNLOCK_MAX_AGE_MS;
+  }
+
+  async function verifyPasswordAgainstHash(password, hash) {
+    const normalized = sanitizeAccessPassword(password);
+    const stored = String(hash || '').trim();
+    if (!isValidAccessPassword(normalized) || !stored) return false;
+    try {
+      return await bcrypt.compare(normalized, stored);
+    } catch {
+      return false;
+    }
+  }
+
+  async function createAccessPasswordHash(rawPassword) {
+    const normalized = sanitizeAccessPassword(rawPassword);
+    if (!isValidAccessPassword(normalized)) return '';
+    const rounds = Number.isFinite(config.bcryptRounds) && config.bcryptRounds >= 8 ? config.bcryptRounds : 12;
+    return bcrypt.hash(normalized, Number(rounds));
+  }
+
+  function shouldGateByAge(rowOrSettings, req) {
+    const restricted = parseBoolean(rowOrSettings?.is_age_restricted ?? rowOrSettings?.page_is_age_restricted, false);
+    if (!restricted) return false;
+    return !isAgeVerified(req);
+  }
+
+  function getRowAccessState(req, contextType, row, keyOverride = '') {
+    const key = keyOverride || row?.id || row?.slug || '';
+    const passwordLocked = hasPasswordGate(row) ? !isUnlocked(req, contextType, key) : false;
+    const ageLocked = shouldGateByAge(row, req);
+    return {
+      has_password: hasPasswordGate(row),
+      password_locked: passwordLocked,
+      is_age_restricted: parseBoolean(row?.is_age_restricted, false) ? 1 : 0,
+      age_locked: ageLocked,
+      is_spoiler: parseBoolean(row?.is_spoiler, false) ? 1 : 0
+    };
+  }
+
+  function sanitizeLinkForAdmin(row) {
+    if (!row) return null;
+    return {
+      id: Number(row.id || 0),
+      title: row.title || '',
+      url: row.url || '',
+      icon_key: row.icon_key || '',
+      order_index: Number(row.order_index || 0),
+      is_visible: Number(row.is_visible || 0) ? 1 : 0,
+      color_hex: row.color_hex || '',
+      has_password: hasPasswordGate(row) ? 1 : 0,
+      is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0,
+      is_spoiler: parseBoolean(row.is_spoiler, false) ? 1 : 0
+    };
+  }
+
+  function sanitizeRedirectForAdmin(row) {
+    if (!row) return null;
+    return {
+      id: Number(row.id || 0),
+      slug: row.slug || '',
+      target_url: row.target_url || '',
+      is_active: Number(row.is_active || 0) ? 1 : 0,
+      has_password: hasPasswordGate(row) ? 1 : 0,
+      is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0
+    };
+  }
+
+  function sanitizeBlockForAdmin(row) {
+    const normalized = normalizeBlockRow(row);
+    if (!normalized) return null;
+    const { access_password_hash: _ignoredHash, ...rest } = normalized;
+    return {
+      ...rest,
+      has_password: hasPasswordGate(row) ? 1 : 0,
+      is_age_restricted: parseBoolean(row?.is_age_restricted, false) ? 1 : 0,
+      is_spoiler: parseBoolean(row?.is_spoiler, false) ? 1 : 0
+    };
+  }
+
+  function renderAccessGate(res, payload = {}) {
+    const mode = payload.mode === 'age' ? 'age' : 'password';
+    const contextType = sanitizeAccessContextType(payload.contextType);
+    const contextIdOrSlug = String(payload.contextIdOrSlug || '').trim();
+    const returnTo = sanitizeInternalReturnPath(payload.returnTo, '/');
+    const title = sanitizeText(payload.title || 'Protected Content', 140) || 'Protected Content';
+    const subtitle = sanitizeText(payload.subtitle || '', 255);
+    const csrfToken = String(payload.csrfToken || '');
+    const statusCode = Number.isInteger(payload.status) && payload.status >= 200 ? payload.status : 200;
+
+    return res.status(statusCode).render('access_gate', {
+      mode,
+      title,
+      subtitle,
+      returnTo,
+      contextType,
+      contextIdOrSlug,
+      csrfToken
+    });
   }
 
   function getVisitorHash(req) {
@@ -1270,7 +1555,9 @@ function createApp(passedConfig) {
       particles_speed: sanitizeNumberRange(settings.particles_speed, 0.2, 3, 1, 2),
       avatar_emoji: sanitizeEmoji(settings.avatar_emoji, '🙂'),
       like_emoji: sanitizeEmoji(settings.like_emoji, '❤'),
-      share_emoji: sanitizeEmoji(settings.share_emoji, '🔗')
+      share_emoji: sanitizeEmoji(settings.share_emoji, '🔗'),
+      page_is_age_restricted: parseBoolean(settings.page_is_age_restricted, false) ? '1' : '0',
+      page_has_password: hasPasswordGate({ page_access_password_hash: settings.page_access_password_hash }) ? '1' : '0'
     };
   }
 
@@ -1426,6 +1713,8 @@ function createApp(passedConfig) {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    await ensureLinksSchema();
+    await ensureBlocksSchema();
     await ensureRedirectsSchema();
     await ensureClickEventsSchema();
     await ensureVisitThrottleSchema();
@@ -1455,6 +1744,8 @@ function createApp(passedConfig) {
       ['site_url', `https://${config.publicDomain}`],
       ['og_image', ''],
       ['og_description', ''],
+      ['page_access_password_hash', ''],
+      ['page_is_age_restricted', '0'],
       ['theme_color', '#ff4d6d'],
       ['link_layout', 'list'],
       ['font_theme', 'modern'],
@@ -1499,18 +1790,64 @@ function createApp(passedConfig) {
   app.get(
     '/',
     asyncHandler(async (req, res) => {
+      const settings = resolveUiSettings(await getSettingsMap());
+      const pagePasswordGate = hasPasswordGate({ page_access_password_hash: settings.page_access_password_hash });
+      if (pagePasswordGate && !isUnlocked(req, 'page', 'page')) {
+        return renderAccessGate(res, {
+          mode: 'password',
+          title: 'This page is password protected',
+          subtitle: 'Enter the password to continue.',
+          returnTo: '/',
+          contextType: 'page',
+          contextIdOrSlug: 'page',
+          csrfToken: req.session?.csrfToken || ''
+        });
+      }
+      if (shouldGateByAge({ page_is_age_restricted: settings.page_is_age_restricted }, req)) {
+        return renderAccessGate(res, {
+          mode: 'age',
+          title: 'Age verification required',
+          subtitle: 'Confirm you are 18 or over to continue.',
+          returnTo: '/',
+          contextType: 'page',
+          contextIdOrSlug: 'page',
+          csrfToken: req.session?.csrfToken || ''
+        });
+      }
+
       if (await shouldCountVisit(req)) {
         await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
       }
 
       const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 AND is_visible = 1 ORDER BY order_index ASC, id ASC');
-      const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
-      const links = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const blocks = blocksRaw
+        .map(normalizeBlockRow)
+        .filter(Boolean)
+        .map(block => ({
+          ...block,
+          ...getRowAccessState(req, 'block', block, block.id)
+        }));
+
+      const linksRaw = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const links = linksRaw.map(link => {
+        const accessState = getRowAccessState(req, 'link', link, link.id);
+        return {
+          id: Number(link.id || 0),
+          title: link.title || '',
+          url: link.url || '',
+          icon_key: link.icon_key || '',
+          order_index: Number(link.order_index || 0),
+          is_visible: Number(link.is_visible || 0) ? 1 : 0,
+          color_hex: link.color_hex || '',
+          ...accessState
+        };
+      });
+
       const embedsRaw = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const embeds = embedsRaw
         .map(embed => ({ ...embed, embed_html: sanitizeEmbedHtml(embed.embed_html) }))
         .filter(embed => embed.embed_html);
-      const settings = resolveUiSettings(await getSettingsMap());
+      const ageVerified = isAgeVerified(req);
 
       const year = new Date().getFullYear();
       const footerHtml = (settings.footer_html || '').replace(/\{\{YEAR\}\}/g, String(year));
@@ -1529,8 +1866,13 @@ function createApp(passedConfig) {
         links,
         embeds,
         footerHtml,
+        csrfToken: req.session?.csrfToken || '',
+        viewerAccess: {
+          age_verified: ageVerified ? 1 : 0
+        },
         settings: {
           ...settings,
+          page_access_password_hash: '',
           site_url: siteUrl,
           og_image_abs: ogImage,
           meta_description: metaDescription
@@ -1570,6 +1912,86 @@ function createApp(passedConfig) {
     })
   );
 
+  app.post(
+    '/access/password-unlock',
+    unlockLimiter,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const contextType = sanitizeAccessContextType(req.body?.context_type);
+      const contextIdOrSlugRaw = String(req.body?.context_id_or_slug || '').trim();
+      const returnTo = sanitizeInternalReturnPath(req.body?.return_to, '/');
+      const password = sanitizeAccessPassword(req.body?.password);
+
+      if (!contextType) return res.status(400).send('Invalid context');
+
+      let passwordHash = '';
+      let contextKey = '';
+      if (contextType === 'page') {
+        const settings = await getSettingsMap();
+        passwordHash = String(settings.page_access_password_hash || '');
+        contextKey = 'page';
+      } else if (contextType === 'link') {
+        const id = Number.parseInt(contextIdOrSlugRaw, 10);
+        if (Number.isInteger(id) && id > 0) {
+          const row = await get('SELECT id, access_password_hash FROM links WHERE id = ?', [id]);
+          passwordHash = String(row?.access_password_hash || '');
+          contextKey = String(id);
+        }
+      } else if (contextType === 'block') {
+        const id = Number.parseInt(contextIdOrSlugRaw, 10);
+        if (Number.isInteger(id) && id > 0) {
+          const row = await get('SELECT id, access_password_hash FROM blocks WHERE id = ?', [id]);
+          passwordHash = String(row?.access_password_hash || '');
+          contextKey = String(id);
+        }
+      } else if (contextType === 'redirect') {
+        const slug = sanitizeSlug(contextIdOrSlugRaw);
+        if (slug) {
+          const row = await get('SELECT slug, access_password_hash FROM redirects WHERE slug = ?', [slug]);
+          passwordHash = String(row?.access_password_hash || '');
+          contextKey = slug;
+        }
+      }
+
+      const ok = await verifyPasswordAgainstHash(password, passwordHash);
+      if (!ok) {
+        if (wantsJson(req)) {
+          return res.status(401).json({ ok: false, error: 'Invalid password' });
+        }
+        return renderAccessGate(res, {
+          status: 401,
+          mode: 'password',
+          title: 'This content is password protected',
+          subtitle: 'Invalid password. Please try again.',
+          returnTo,
+          contextType,
+          contextIdOrSlug: contextIdOrSlugRaw,
+          csrfToken: req.session?.csrfToken || ''
+        });
+      }
+
+      markUnlocked(req, contextType, contextKey);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Unlocked', redirect_to: returnTo });
+      }
+      return res.redirect(returnTo);
+    })
+  );
+
+  app.post(
+    '/access/age-verify',
+    unlockLimiter,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const returnTo = sanitizeInternalReturnPath(req.body?.return_to, '/');
+      markAgeVerified(req, res, returnTo);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Age verification complete' });
+      }
+      return res.redirect(returnTo);
+    })
+  );
+
   app.get(
     '/out/:id',
     redirectLimiter,
@@ -1577,8 +1999,32 @@ function createApp(passedConfig) {
       const id = Number(req.params?.id || 0);
       if (!Number.isInteger(id) || id <= 0) return next();
 
-      const link = await get('SELECT id, title, url FROM links WHERE id = ?', [id]);
+      const link = await get('SELECT id, title, url, access_password_hash, is_age_restricted FROM links WHERE id = ?', [id]);
       if (!link?.url) return next();
+
+      if (hasPasswordGate(link) && !isUnlocked(req, 'link', link.id)) {
+        return renderAccessGate(res, {
+          mode: 'password',
+          title: 'This link is password protected',
+          subtitle: 'Enter password to continue.',
+          returnTo: sanitizeInternalReturnPath(req.originalUrl || `/out/${link.id}`, `/out/${link.id}`),
+          contextType: 'link',
+          contextIdOrSlug: String(link.id),
+          csrfToken: req.session?.csrfToken || ''
+        });
+      }
+
+      if (shouldGateByAge(link, req)) {
+        return renderAccessGate(res, {
+          mode: 'age',
+          title: 'Age verification required',
+          subtitle: 'Confirm you are 18 or over to continue.',
+          returnTo: sanitizeInternalReturnPath(req.originalUrl || `/out/${link.id}`, `/out/${link.id}`),
+          contextType: 'link',
+          contextIdOrSlug: String(link.id),
+          csrfToken: req.session?.csrfToken || ''
+        });
+      }
 
       const utm = readUtmParamsFromQuery(req.query).params;
       const destinationUrl = buildTrackedDestinationUrl(link.url, utm);
@@ -1648,11 +2094,13 @@ function createApp(passedConfig) {
     requireAuth,
     asyncHandler(async (req, res) => {
       const analyticsDays = parseAnalyticsDays(req.query?.analytics_days, 30);
-      const links = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
+      const linksRaw = await q('SELECT * FROM links ORDER BY order_index ASC, id ASC');
+      const links = linksRaw.map(sanitizeLinkForAdmin).filter(Boolean);
       const settings = resolveUiSettings(await getSettingsMap());
       const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 ORDER BY order_index ASC, id ASC');
-      const blocks = blocksRaw.map(normalizeBlockRow).filter(Boolean);
-      const redirects = await q('SELECT * FROM redirects ORDER BY slug ASC');
+      const blocks = blocksRaw.map(sanitizeBlockForAdmin).filter(Boolean);
+      const redirectsRaw = await q('SELECT * FROM redirects ORDER BY slug ASC');
+      const redirects = redirectsRaw.map(sanitizeRedirectForAdmin).filter(Boolean);
       const analytics = await getAnalyticsSnapshot(analyticsDays);
 
       const socialsDir = path.join(__dirname, 'public', 'images', 'socials');
@@ -1889,30 +2337,45 @@ function createApp(passedConfig) {
       const targetUrl = normalizeHttpUrl(req.body?.url);
       const iconKey = sanitizeText(req.body?.icon_key, 50).replace(/[^a-zA-Z0-9_-]/g, '');
       const order = Number.parseInt(req.body?.order_index || '0', 10) || 0;
-      const visible = req.body?.is_visible ? 1 : 0;
+      const visible = parseBoolean(req.body?.is_visible, false) ? 1 : 0;
       const colorHex = sanitizeColorHex(req.body?.color_hex);
+      const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
+      const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
+      const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
+      const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
 
       if (!title || !targetUrl) return res.status(400).send('Title and valid URL are required');
+      if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
+        return res.status(400).send(`Access password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
+      }
+
+      let accessPasswordHash = '';
+      if (id > 0) {
+        const existing = await get('SELECT access_password_hash FROM links WHERE id = ?', [id]);
+        accessPasswordHash = String(existing?.access_password_hash || '');
+      }
+      if (clearAccessPassword) {
+        accessPasswordHash = '';
+      } else if (accessPasswordRaw) {
+        accessPasswordHash = await createAccessPasswordHash(accessPasswordRaw);
+      }
 
       let linkId = id;
       if (id > 0) {
         await run(
-          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ? WHERE id = ?',
-          [title, targetUrl, iconKey, order, visible, colorHex, id]
+          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ? WHERE id = ?',
+          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler, id]
         );
       } else {
-        const insertResult = await runResult('INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex) VALUES (?, ?, ?, ?, ?, ?)', [
-          title,
-          targetUrl,
-          iconKey,
-          order,
-          visible,
-          colorHex
-        ]);
+        const insertResult = await runResult(
+          'INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex, access_password_hash, is_age_restricted, is_spoiler) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler]
+        );
         linkId = Number(insertResult.insertId || 0);
       }
 
-      const link = linkId > 0 ? await get('SELECT * FROM links WHERE id = ?', [linkId]) : null;
+      const linkRaw = linkId > 0 ? await get('SELECT * FROM links WHERE id = ?', [linkId]) : null;
+      const link = sanitizeLinkForAdmin(linkRaw);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: 'Link saved', link });
       }
@@ -1954,7 +2417,8 @@ function createApp(passedConfig) {
             : 0;
 
       await run('UPDATE links SET is_visible = ? WHERE id = ?', [nextVisible, id]);
-      const link = await get('SELECT * FROM links WHERE id = ?', [id]);
+      const linkRaw = await get('SELECT * FROM links WHERE id = ?', [id]);
+      const link = sanitizeLinkForAdmin(linkRaw);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: nextVisible ? 'Link is visible' : 'Link is hidden', link });
       }
@@ -2001,21 +2465,42 @@ function createApp(passedConfig) {
       const type = sanitizeChoice(req.body?.type, BLOCK_TYPES, '');
       const pageId = Number(req.body?.page_id || 1) || 1;
       let order = Number.parseInt(req.body?.order_index || '0', 10) || 0;
-      const visible = req.body?.is_visible ? 1 : 0;
+      const visible = parseBoolean(req.body?.is_visible, false) ? 1 : 0;
+      const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
+      const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
+      const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
+      const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
       const dataObj = normalizeBlockDataFromBody(type, req.body);
 
       if (!type) return res.status(400).send('Valid block type is required');
       if (!dataObj) return res.status(400).send('Block data is invalid for selected type');
       if (pageId <= 0) return res.status(400).send('Invalid page id');
+      if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
+        return res.status(400).send(`Access password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
+      }
+
+      let accessPasswordHash = '';
+      if (id > 0) {
+        const existing = await get('SELECT access_password_hash FROM blocks WHERE id = ?', [id]);
+        accessPasswordHash = String(existing?.access_password_hash || '');
+      }
+      if (clearAccessPassword) {
+        accessPasswordHash = '';
+      } else if (accessPasswordRaw) {
+        accessPasswordHash = await createAccessPasswordHash(accessPasswordRaw);
+      }
 
       let blockId = id;
       if (id > 0) {
-        await run('UPDATE blocks SET page_id = ?, type = ?, data = ?, order_index = ?, is_visible = ? WHERE id = ?', [
+        await run('UPDATE blocks SET page_id = ?, type = ?, data = ?, order_index = ?, is_visible = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ? WHERE id = ?', [
           pageId,
           type,
           JSON.stringify(dataObj),
           order,
           visible,
+          accessPasswordHash || null,
+          isAgeRestricted,
+          isSpoiler,
           id
         ]);
       } else {
@@ -2023,18 +2508,15 @@ function createApp(passedConfig) {
           const maxRow = await get('SELECT COALESCE(MAX(order_index), 0) AS max_order FROM blocks WHERE page_id = ?', [pageId]);
           order = Number(maxRow?.max_order || 0) + 1;
         }
-        const insertResult = await runResult('INSERT INTO blocks (page_id, type, data, order_index, is_visible) VALUES (?, ?, ?, ?, ?)', [
-          pageId,
-          type,
-          JSON.stringify(dataObj),
-          order,
-          visible
-        ]);
+        const insertResult = await runResult(
+          'INSERT INTO blocks (page_id, type, data, order_index, is_visible, access_password_hash, is_age_restricted, is_spoiler) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+          [pageId, type, JSON.stringify(dataObj), order, visible, accessPasswordHash || null, isAgeRestricted, isSpoiler]
+        );
         blockId = Number(insertResult.insertId || 0);
       }
 
       const blockRow = blockId > 0 ? await get('SELECT * FROM blocks WHERE id = ?', [blockId]) : null;
-      const block = normalizeBlockRow(blockRow);
+      const block = sanitizeBlockForAdmin(blockRow);
 
       if (wantsJson(req)) {
         return res.json({ ok: true, message: 'Block saved', block });
@@ -2078,7 +2560,7 @@ function createApp(passedConfig) {
 
       await run('UPDATE blocks SET is_visible = ? WHERE id = ?', [nextVisible, id]);
       const blockRow = await get('SELECT * FROM blocks WHERE id = ?', [id]);
-      const block = normalizeBlockRow(blockRow);
+      const block = sanitizeBlockForAdmin(blockRow);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: nextVisible ? 'Block is visible' : 'Block is hidden', block });
       }
@@ -2145,6 +2627,7 @@ function createApp(passedConfig) {
         'site_url',
         'og_image',
         'og_description',
+        'page_is_age_restricted',
         'theme_color',
         'link_layout',
         'font_theme',
@@ -2165,6 +2648,8 @@ function createApp(passedConfig) {
           value = normalizeHttpUrl(value);
         } else if (key === 'og_image') {
           value = normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
+        } else if (key === 'page_is_age_restricted') {
+          value = parseBoolean(value, false) ? '1' : '0';
         } else if (key === 'background_image_url' || key === 'background_video_url') {
           value = normalizeMediaAsset(value);
         } else if (key === 'theme_color') {
@@ -2204,6 +2689,25 @@ function createApp(passedConfig) {
         }
 
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', [key, value]);
+      }
+
+      const pagePasswordRaw = sanitizeAccessPassword(req.body?.page_access_password || '');
+      const clearPagePassword = parseBoolean(req.body?.clear_page_access_password, false);
+      if (pagePasswordRaw && !isValidAccessPassword(pagePasswordRaw)) {
+        return res.status(400).send(`Page password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
+      }
+
+      if (clearPagePassword) {
+        await run(
+          'INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+          ['page_access_password_hash', '']
+        );
+      } else if (pagePasswordRaw) {
+        const pagePasswordHash = await createAccessPasswordHash(pagePasswordRaw);
+        await run(
+          'INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
+          ['page_access_password_hash', pagePasswordHash]
+        );
       }
 
       if (req.files?.avatar?.[0]) {
@@ -2357,17 +2861,44 @@ function createApp(passedConfig) {
       const id = Number(req.body?.id || 0);
       const slug = sanitizeSlug(req.body?.slug);
       const targetUrl = normalizeHttpUrl(req.body?.target_url);
-      const isActive = req.body?.is_active ? 1 : 0;
+      const isActive = parseBoolean(req.body?.is_active, false) ? 1 : 0;
+      const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
+      const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
+      const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
 
       if (!slug || !targetUrl) return res.status(400).send('Valid slug and target URL are required');
+      if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
+        return res.status(400).send(`Access password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
+      }
+
+      let accessPasswordHash = '';
+      if (id > 0) {
+        const existing = await get('SELECT access_password_hash FROM redirects WHERE id = ?', [id]);
+        accessPasswordHash = String(existing?.access_password_hash || '');
+      } else {
+        const existingBySlug = await get('SELECT access_password_hash FROM redirects WHERE slug = ?', [slug]);
+        accessPasswordHash = String(existingBySlug?.access_password_hash || '');
+      }
+      if (clearAccessPassword) {
+        accessPasswordHash = '';
+      } else if (accessPasswordRaw) {
+        accessPasswordHash = await createAccessPasswordHash(accessPasswordRaw);
+      }
 
       let redirectId = id;
       if (id > 0) {
-        await run('UPDATE redirects SET slug = ?, target_url = ?, is_active = ? WHERE id = ?', [slug, targetUrl, isActive, id]);
+        await run('UPDATE redirects SET slug = ?, target_url = ?, is_active = ?, access_password_hash = ?, is_age_restricted = ? WHERE id = ?', [
+          slug,
+          targetUrl,
+          isActive,
+          accessPasswordHash || null,
+          isAgeRestricted,
+          id
+        ]);
       } else {
         const insertResult = await runResult(
-          'INSERT INTO redirects (slug, target_url, is_active) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active)',
-          [slug, targetUrl, isActive]
+          'INSERT INTO redirects (slug, target_url, is_active, access_password_hash, is_age_restricted) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active), access_password_hash = VALUES(access_password_hash), is_age_restricted = VALUES(is_age_restricted)',
+          [slug, targetUrl, isActive, accessPasswordHash || null, isAgeRestricted]
         );
 
         if (insertResult.insertId) {
@@ -2378,7 +2909,8 @@ function createApp(passedConfig) {
         }
       }
 
-      const redirect = redirectId > 0 ? await get('SELECT * FROM redirects WHERE id = ?', [redirectId]) : null;
+      const redirectRaw = redirectId > 0 ? await get('SELECT * FROM redirects WHERE id = ?', [redirectId]) : null;
+      const redirect = sanitizeRedirectForAdmin(redirectRaw);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: 'Redirect saved', redirect });
       }
@@ -2420,7 +2952,8 @@ function createApp(passedConfig) {
             : 0;
 
       await run('UPDATE redirects SET is_active = ? WHERE id = ?', [nextActive, id]);
-      const redirect = await get('SELECT * FROM redirects WHERE id = ?', [id]);
+      const redirectRaw = await get('SELECT * FROM redirects WHERE id = ?', [id]);
+      const redirect = sanitizeRedirectForAdmin(redirectRaw);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: nextActive ? 'Redirect is active' : 'Redirect is inactive', redirect });
       }
@@ -2444,8 +2977,32 @@ function createApp(passedConfig) {
       const slug = sanitizeSlug(req.params.slug);
       if (!slug) return next();
 
-      const row = await get('SELECT id, slug, target_url FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
+      const row = await get('SELECT id, slug, target_url, access_password_hash, is_age_restricted FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
       if (row?.target_url) {
+        if (hasPasswordGate(row) && !isUnlocked(req, 'redirect', row.slug)) {
+          return renderAccessGate(res, {
+            mode: 'password',
+            title: 'This redirect is password protected',
+            subtitle: 'Enter password to continue.',
+            returnTo: sanitizeInternalReturnPath(req.originalUrl || `/${row.slug}`, `/${row.slug}`),
+            contextType: 'redirect',
+            contextIdOrSlug: row.slug,
+            csrfToken: req.session?.csrfToken || ''
+          });
+        }
+
+        if (shouldGateByAge(row, req)) {
+          return renderAccessGate(res, {
+            mode: 'age',
+            title: 'Age verification required',
+            subtitle: 'Confirm you are 18 or over to continue.',
+            returnTo: sanitizeInternalReturnPath(req.originalUrl || `/${row.slug}`, `/${row.slug}`),
+            contextType: 'redirect',
+            contextIdOrSlug: row.slug,
+            csrfToken: req.session?.csrfToken || ''
+          });
+        }
+
         const utm = readUtmParamsFromQuery(req.query).params;
         const destinationUrl = buildTrackedDestinationUrl(row.target_url, utm);
         if (!destinationUrl) return next();
@@ -2543,5 +3100,8 @@ module.exports = {
   normalizeHttpUrl,
   suggestIconKeyFromHostname,
   sanitizeEmbedHtml,
-  buildTrackedDestinationUrl
+  buildTrackedDestinationUrl,
+  sanitizeInternalReturnPath,
+  isValidAccessPassword,
+  hasPasswordGate
 };
