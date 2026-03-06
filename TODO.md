@@ -36,9 +36,10 @@
   - [ ] Button microinteractions: hover lift, subtle glow, press feedback
   - [ ] Respect `prefers-reduced-motion`
 
-- [ ] **Featured / spotlight link**
-  - [ ] Allow 1 featured block with bigger card layout + thumbnail
-  - [ ] Pin to top option
+- [x] **Featured / spotlight link**
+  - [x] Allow 1 featured block with bigger card layout + thumbnail
+  - [x] Pin to top option
+  - [x] If pinned, visually pull the featured link out of the cluster and place it above the page/cluster
 
 - [ ] **Asset manager**
   - [ ] Upload library (reuse images/videos across blocks)

@@ -331,7 +331,10 @@
               data-visible="<%= l.is_visible ? '1' : '0' %>"
               data-has-password="<%= l.has_password ? '1' : '0' %>"
               data-age-restricted="<%= l.is_age_restricted ? '1' : '0' %>"
-              data-spoiler="<%= l.is_spoiler ? '1' : '0' %>">
+              data-spoiler="<%= l.is_spoiler ? '1' : '0' %>"
+              data-featured="<%= l.is_featured ? '1' : '0' %>"
+              data-featured-pin-top="<%= l.featured_pin_top ? '1' : '0' %>"
+              data-featured-thumbnail-url="<%= l.featured_thumbnail_url || '' %>">
               <button type="button" class="icon-action drag-handle" data-action="drag" title="Drag to reorder" aria-label="Drag to reorder">≡</button>
               <div class="link-admin-main">
                 <div class="link-admin-title inline-editable is-editable" data-inline-field="title" tabindex="0" title="Click to edit title"><%= l.title %></div>
@@ -343,6 +346,8 @@
                 <span class="link-pill link-pill-access" <%= l.has_password ? '' : 'hidden' %>>LOCKED</span>
                 <span class="link-pill link-pill-age" <%= l.is_age_restricted ? '' : 'hidden' %>>18+</span>
                 <span class="link-pill link-pill-spoiler" <%= l.is_spoiler ? '' : 'hidden' %>>SPOILER</span>
+                <span class="link-pill link-pill-featured" <%= l.is_featured ? '' : 'hidden' %>>FEATURED</span>
+                <span class="link-pill link-pill-pin" <%= (l.is_featured && l.featured_pin_top) ? '' : 'hidden' %>>PINNED</span>
                 <span class="color-chip" data-color="<%= l.color_hex || '' %>" title="<%= l.color_hex || '#2a2a2a' %>"></span>
               </div>
               <div class="link-admin-actions">
@@ -774,7 +779,25 @@
                   <span class="modal-checkbox-description">Hide this link until the visitor reveals it.</span>
                 </span>
               </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="is_featured" id="link-modal-featured">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Featured spotlight</span>
+                  <span class="modal-checkbox-description">Use larger visual treatment for this link (only one featured link at a time).</span>
+                </span>
+              </label>
+              <label class="checkbox modal-checkbox modal-checkbox-card">
+                <input type="checkbox" name="featured_pin_top" id="link-modal-featured-pin-top">
+                <span class="modal-checkbox-copy">
+                  <span class="modal-checkbox-title">Pin to top of page</span>
+                  <span class="modal-checkbox-description">Pull featured link out of cluster and show it at the top.</span>
+                </span>
+              </label>
             </div>
+            <label class="modal-field" id="link-modal-featured-thumb-wrap">
+              <span class="modal-label">Featured thumbnail URL (optional)</span>
+              <input name="featured_thumbnail_url" id="link-modal-featured-thumbnail-url" placeholder="https://.../featured-image.jpg">
+            </label>
           </section>
           <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
           <div class="modal-actions">

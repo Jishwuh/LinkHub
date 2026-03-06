@@ -972,7 +972,10 @@ function createApp(passedConfig) {
     await ensureTableColumns('links', [
       ['access_password_hash', 'access_password_hash VARCHAR(255) NULL AFTER color_hex'],
       ['is_age_restricted', 'is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash'],
-      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted']
+      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted'],
+      ['is_featured', 'is_featured TINYINT(1) NOT NULL DEFAULT 0 AFTER is_spoiler'],
+      ['featured_pin_top', 'featured_pin_top TINYINT(1) NOT NULL DEFAULT 0 AFTER is_featured'],
+      ['featured_thumbnail_url', "featured_thumbnail_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER featured_pin_top"]
     ]);
   }
 
@@ -1253,6 +1256,9 @@ function createApp(passedConfig) {
 
   function sanitizeLinkForAdmin(row) {
     if (!row) return null;
+    const isFeatured = parseBoolean(row.is_featured, false) ? 1 : 0;
+    const featuredPinTop = isFeatured && parseBoolean(row.featured_pin_top, false) ? 1 : 0;
+    const featuredThumbnail = isFeatured ? normalizeMediaAsset(sanitizeText(row.featured_thumbnail_url || '', 2048)) : '';
     return {
       id: Number(row.id || 0),
       title: row.title || '',
@@ -1263,7 +1269,10 @@ function createApp(passedConfig) {
       color_hex: row.color_hex || '',
       has_password: hasPasswordGate(row) ? 1 : 0,
       is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0,
-      is_spoiler: parseBoolean(row.is_spoiler, false) ? 1 : 0
+      is_spoiler: parseBoolean(row.is_spoiler, false) ? 1 : 0,
+      is_featured: isFeatured,
+      featured_pin_top: featuredPinTop,
+      featured_thumbnail_url: featuredThumbnail
     };
   }
 
@@ -1745,6 +1754,9 @@ function createApp(passedConfig) {
         order_index INT DEFAULT 0,
         is_visible TINYINT(1) DEFAULT 1,
         color_hex VARCHAR(20) NULL,
+        is_featured TINYINT(1) NOT NULL DEFAULT 0,
+        featured_pin_top TINYINT(1) NOT NULL DEFAULT 0,
+        featured_thumbnail_url VARCHAR(2048) NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -1925,6 +1937,8 @@ function createApp(passedConfig) {
       const linksRaw = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const links = linksRaw.map(link => {
         const accessState = getRowAccessState(req, 'link', link, link.id);
+        const isFeatured = parseBoolean(link.is_featured, false) ? 1 : 0;
+        const featuredPinTop = isFeatured && parseBoolean(link.featured_pin_top, false) ? 1 : 0;
         return {
           id: Number(link.id || 0),
           title: link.title || '',
@@ -1933,9 +1947,14 @@ function createApp(passedConfig) {
           order_index: Number(link.order_index || 0),
           is_visible: Number(link.is_visible || 0) ? 1 : 0,
           color_hex: link.color_hex || '',
+          is_featured: isFeatured,
+          featured_pin_top: featuredPinTop,
+          featured_thumbnail_url: isFeatured ? normalizeMediaAsset(sanitizeText(link.featured_thumbnail_url || '', 2048)) : '',
           ...accessState
         };
       });
+      const spotlightLink = links.find(link => Number(link.is_featured || 0) === 1 && Number(link.featured_pin_top || 0) === 1) || null;
+      const clusterLinks = spotlightLink ? links.filter(link => link.id !== spotlightLink.id) : links;
 
       const embedsRaw = await q('SELECT * FROM embeds WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
       const embeds = embedsRaw
@@ -1957,6 +1976,8 @@ function createApp(passedConfig) {
       res.render('index', {
         blocks,
         links,
+        clusterLinks,
+        spotlightLink,
         embeds,
         footerHtml,
         csrfToken: req.session?.csrfToken || '',
@@ -2478,6 +2499,9 @@ function createApp(passedConfig) {
       const colorHex = sanitizeColorHex(req.body?.color_hex);
       const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
       const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
+      const isFeatured = parseBoolean(req.body?.is_featured, false) ? 1 : 0;
+      const featuredPinTop = isFeatured && parseBoolean(req.body?.featured_pin_top, false) ? 1 : 0;
+      const featuredThumbnailUrl = isFeatured ? normalizeMediaAsset(sanitizeText(req.body?.featured_thumbnail_url, 2048)) : '';
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
 
@@ -2500,15 +2524,33 @@ function createApp(passedConfig) {
       let linkId = id;
       if (id > 0) {
         await run(
-          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ? WHERE id = ?',
-          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler, id]
+          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ?, is_featured = ?, featured_pin_top = ?, featured_thumbnail_url = ? WHERE id = ?',
+          [
+            title,
+            targetUrl,
+            iconKey,
+            order,
+            visible,
+            colorHex,
+            accessPasswordHash || null,
+            isAgeRestricted,
+            isSpoiler,
+            isFeatured,
+            featuredPinTop,
+            featuredThumbnailUrl,
+            id
+          ]
         );
       } else {
         const insertResult = await runResult(
-          'INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex, access_password_hash, is_age_restricted, is_spoiler) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler]
+          'INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex, access_password_hash, is_age_restricted, is_spoiler, is_featured, featured_pin_top, featured_thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler, isFeatured, featuredPinTop, featuredThumbnailUrl]
         );
         linkId = Number(insertResult.insertId || 0);
+      }
+
+      if (isFeatured && linkId > 0) {
+        await run('UPDATE links SET is_featured = 0, featured_pin_top = 0 WHERE id <> ?', [linkId]);
       }
 
       const linkRaw = linkId > 0 ? await get('SELECT * FROM links WHERE id = ?', [linkId]) : null;

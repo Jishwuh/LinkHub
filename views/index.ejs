@@ -95,6 +95,60 @@
         </button>
       </div>
     </div>
+    <% const linkCollection = Array.isArray(clusterLinks) ? clusterLinks : links; %>
+    <% if (spotlightLink) { %>
+      <% const spotlightPasswordLocked = Number(spotlightLink.password_locked || 0) === 1; %>
+      <% const spotlightAgeLocked = Number(spotlightLink.age_locked || 0) === 1; %>
+      <% const spotlightSpoiler = Number(spotlightLink.is_spoiler || 0) === 1; %>
+      <% const spotlightOverlayVisible = spotlightPasswordLocked || spotlightAgeLocked || spotlightSpoiler; %>
+      <% const spotlightAccessClass = `${spotlightPasswordLocked ? 'is-password-locked' : ''} ${spotlightAgeLocked ? 'is-age-locked' : ''} ${spotlightSpoiler ? 'is-spoiler' : ''}`.trim(); %>
+      <section class="spotlight-wrap">
+        <a
+          class="spotlight-link link-card access-item access-item-link <%= spotlightAccessClass %> <%= spotlightLink.featured_thumbnail_url ? 'has-spotlight-media' : '' %>"
+          data-color="<%= spotlightLink.color_hex || '' %>"
+          data-context-type="link"
+          data-context-id="<%= spotlightLink.id %>"
+          data-context-slug=""
+          data-return-to="/out/<%= spotlightLink.id %>"
+          data-password-locked="<%= spotlightPasswordLocked ? '1' : '0' %>"
+          data-age-locked="<%= spotlightAgeLocked ? '1' : '0' %>"
+          data-spoiler="<%= spotlightSpoiler ? '1' : '0' %>"
+          data-revealed="0"
+          href="/out/<%= spotlightLink.id %>"
+          target="_blank"
+          rel="noopener noreferrer">
+          <% if (spotlightLink.featured_thumbnail_url) { %>
+            <span class="spotlight-media" aria-hidden="true">
+              <img src="<%= spotlightLink.featured_thumbnail_url %>" alt="" loading="lazy">
+            </span>
+          <% } %>
+          <span class="spotlight-content">
+            <span class="spotlight-badge">Featured</span>
+            <span class="spotlight-title-row">
+              <% if (spotlightLink.icon_key) { %>
+                <img class="icon" src="/static/images/socials/<%= spotlightLink.icon_key %>.svg" alt="">
+              <% } %>
+              <span class="label"><%= spotlightLink.title %></span>
+            </span>
+          </span>
+          <span class="link-arrow" aria-hidden="true">↗</span>
+          <% if (spotlightOverlayVisible) { %>
+            <span class="access-overlay access-overlay-inline">
+              <span class="access-overlay-tag tag-lock" <%= spotlightPasswordLocked ? '' : 'hidden' %>>Locked</span>
+              <span class="access-overlay-tag tag-age" <%= (!spotlightPasswordLocked && spotlightAgeLocked) ? '' : 'hidden' %>>18+</span>
+              <button
+                type="button"
+                class="access-overlay-tag access-action-btn tag-spoiler-btn"
+                data-access-action="spoiler-inline"
+                aria-label="Reveal spoiler content"
+                <%= (!spotlightPasswordLocked && !spotlightAgeLocked && spotlightSpoiler) ? '' : 'hidden' %>>
+                Spoiler
+              </button>
+            </span>
+          <% } %>
+        </a>
+      </section>
+    <% } %>
 
     <% if (blocks && blocks.length) { %>
       <section class="custom-blocks">
@@ -152,14 +206,14 @@
             <% if (b.type === 'links_cluster') { %>
               <section class="block block-links-cluster">
                 <div class="links">
-                  <% links.forEach(l => { %>
+                  <% linkCollection.forEach(l => { %>
                     <% const linkPasswordLocked = Number(l.password_locked || 0) === 1; %>
                     <% const linkAgeLocked = Number(l.age_locked || 0) === 1; %>
                     <% const linkSpoiler = Number(l.is_spoiler || 0) === 1; %>
                     <% const linkOverlayVisible = linkPasswordLocked || linkAgeLocked || linkSpoiler; %>
                     <% const linkAccessClass = `${linkPasswordLocked ? 'is-password-locked' : ''} ${linkAgeLocked ? 'is-age-locked' : ''} ${linkSpoiler ? 'is-spoiler' : ''}`.trim(); %>
                     <a
-                      class="link-card access-item access-item-link <%= linkAccessClass %>"
+                      class="link-card access-item access-item-link <%= linkAccessClass %> <%= l.is_featured ? 'link-card-featured' : '' %> <%= l.is_featured && l.featured_thumbnail_url ? 'has-featured-thumb' : '' %>"
                       data-color="<%= l.color_hex || '' %>"
                       data-context-type="link"
                       data-context-id="<%= l.id %>"
@@ -172,6 +226,9 @@
                       href="/out/<%= l.id %>"
                       target="_blank"
                       rel="noopener noreferrer">
+                      <% if (l.is_featured && l.featured_thumbnail_url) { %>
+                        <span class="featured-thumb"><img src="<%= l.featured_thumbnail_url %>" alt="" loading="lazy"></span>
+                      <% } %>
                       <% if (l.icon_key) { %>
                         <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
                       <% } %>
@@ -235,14 +292,14 @@
       </section>
     <% } else { %>
       <main class="links">
-        <% links.forEach(l => { %>
+        <% linkCollection.forEach(l => { %>
           <% const linkPasswordLocked = Number(l.password_locked || 0) === 1; %>
           <% const linkAgeLocked = Number(l.age_locked || 0) === 1; %>
           <% const linkSpoiler = Number(l.is_spoiler || 0) === 1; %>
           <% const linkOverlayVisible = linkPasswordLocked || linkAgeLocked || linkSpoiler; %>
           <% const linkAccessClass = `${linkPasswordLocked ? 'is-password-locked' : ''} ${linkAgeLocked ? 'is-age-locked' : ''} ${linkSpoiler ? 'is-spoiler' : ''}`.trim(); %>
           <a
-            class="link-card access-item access-item-link <%= linkAccessClass %>"
+            class="link-card access-item access-item-link <%= linkAccessClass %> <%= l.is_featured ? 'link-card-featured' : '' %> <%= l.is_featured && l.featured_thumbnail_url ? 'has-featured-thumb' : '' %>"
             data-color="<%= l.color_hex || '' %>"
             data-context-type="link"
             data-context-id="<%= l.id %>"
@@ -255,6 +312,9 @@
             href="/out/<%= l.id %>"
             target="_blank"
             rel="noopener noreferrer">
+            <% if (l.is_featured && l.featured_thumbnail_url) { %>
+              <span class="featured-thumb"><img src="<%= l.featured_thumbnail_url %>" alt="" loading="lazy"></span>
+            <% } %>
             <% if (l.icon_key) { %>
               <img class="icon" src="/static/images/socials/<%= l.icon_key %>.svg" alt="">
             <% } %>

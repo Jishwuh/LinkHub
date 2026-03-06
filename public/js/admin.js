@@ -434,9 +434,13 @@ document.addEventListener('DOMContentLoaded', () => {
       $$('.link-admin-item', linksList)
         .filter(item => item.dataset.visible === '1')
         .map(item => ({
+          id: Number(item.dataset.id || 0),
           title: item.dataset.title || 'Link',
           url: item.dataset.url || '#',
-          color: normalizeHex(item.dataset.color, '#2a2a2a')
+          color: normalizeHex(item.dataset.color, '#2a2a2a'),
+          is_featured: item.dataset.featured === '1',
+          featured_pin_top: item.dataset.featuredPinTop === '1',
+          featured_thumbnail_url: String(item.dataset.featuredThumbnailUrl || '').trim()
         }));
 
     const makeBlock = label => {
@@ -466,7 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       links.forEach(link => {
         const anchor = document.createElement('a');
-        anchor.className = `builder-preview-link builder-button-${buttonStyle}`;
+        anchor.className = `builder-preview-link builder-button-${buttonStyle}${link.is_featured ? ' is-featured' : ''}`;
         anchor.href = link.url || '#';
         anchor.target = '_blank';
         anchor.rel = 'noopener noreferrer';
@@ -491,6 +495,30 @@ document.addEventListener('DOMContentLoaded', () => {
       return block;
     };
 
+    const renderSpotlight = link => {
+      const block = makeBlock('Pinned Spotlight');
+      const card = document.createElement('a');
+      card.className = 'builder-preview-spotlight';
+      card.href = link.url || '#';
+      card.target = '_blank';
+      card.rel = 'noopener noreferrer';
+      card.title = link.url || '#';
+      card.style.setProperty('--spotlight-color', normalizeHex(link.color, '#2a2a2a'));
+
+      const badge = document.createElement('span');
+      badge.className = 'builder-preview-spotlight-badge';
+      badge.textContent = 'Featured';
+      card.appendChild(badge);
+
+      const title = document.createElement('strong');
+      title.className = 'builder-preview-spotlight-title';
+      title.textContent = link.title || 'Featured link';
+      card.appendChild(title);
+
+      block.appendChild(card);
+      return block;
+    };
+
     const render = () => {
       const handle = String(handleInput?.value || '').trim();
       const displayName = String(displayNameInput?.value || '').trim();
@@ -499,11 +527,14 @@ document.addEventListener('DOMContentLoaded', () => {
       previewRoot.style.setProperty('--preview-accent', normalizeHex(themeColorInput?.value, '#8ab4ff'));
 
       const links = getVisibleLinks();
+      const pinnedSpotlight = links.find(link => link.is_featured && link.featured_pin_top) || null;
+      const clusterLinks = pinnedSpotlight ? links.filter(link => link.id !== pinnedSpotlight.id) : links;
       const visibleBlocks = $$('.link-admin-item', blocksList).filter(item => item.dataset.visible === '1');
 
       contentEl.innerHTML = '';
       if (!visibleBlocks.length) {
-        contentEl.appendChild(renderLinksCluster(links));
+        if (pinnedSpotlight) contentEl.appendChild(renderSpotlight(pinnedSpotlight));
+        contentEl.appendChild(renderLinksCluster(clusterLinks));
         return;
       }
 
@@ -514,7 +545,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (type === 'links_cluster') {
           hasLinksCluster = true;
-          contentEl.appendChild(renderLinksCluster(links));
+          if (pinnedSpotlight) contentEl.appendChild(renderSpotlight(pinnedSpotlight));
+          contentEl.appendChild(renderLinksCluster(clusterLinks));
           return;
         }
 
@@ -564,7 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
         contentEl.appendChild(block);
       });
 
-      if (links.length && !hasLinksCluster) {
+      if (clusterLinks.length && !hasLinksCluster) {
         const info = document.createElement('div');
         info.className = 'builder-preview-empty';
         info.textContent = 'Links are not currently placed. Add a Links Cluster block to show them on-page.';
@@ -576,7 +608,18 @@ document.addEventListener('DOMContentLoaded', () => {
       childList: true,
       subtree: true,
       attributes: true,
-      attributeFilter: ['data-visible', 'data-title', 'data-url', 'data-color', 'data-type', 'data-json', 'data-order']
+      attributeFilter: [
+        'data-visible',
+        'data-title',
+        'data-url',
+        'data-color',
+        'data-type',
+        'data-json',
+        'data-order',
+        'data-featured',
+        'data-featured-pin-top',
+        'data-featured-thumbnail-url'
+      ]
     };
 
     const linksObserver = new MutationObserver(() => render());
@@ -919,6 +962,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearAccessPasswordEl = $('#link-modal-clear-access-password');
     const ageRestrictedEl = $('#link-modal-age-restricted');
     const spoilerEl = $('#link-modal-spoiler');
+    const featuredEl = $('#link-modal-featured');
+    const featuredPinTopEl = $('#link-modal-featured-pin-top');
+    const featuredThumbnailUrlEl = $('#link-modal-featured-thumbnail-url');
+    const featuredThumbWrapEl = $('#link-modal-featured-thumb-wrap');
     const enrichBtn = $('#link-modal-enrich-btn');
     const enrichStatusEl = $('#link-modal-enrich-status');
     const enrichPreviewEl = $('#link-modal-enrich-preview');
@@ -932,6 +979,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let enrichNonce = 0;
 
     const syncModalColor = () => applyColorChip(colorPreviewEl, colorEl?.value);
+    const syncFeaturedControls = () => {
+      const enabled = featuredEl?.checked === true;
+      if (featuredPinTopEl) {
+        if (!enabled) featuredPinTopEl.checked = false;
+        featuredPinTopEl.disabled = !enabled;
+      }
+      if (featuredThumbnailUrlEl) featuredThumbnailUrlEl.disabled = !enabled;
+      if (featuredThumbWrapEl) featuredThumbWrapEl.hidden = !enabled;
+    };
     const knownIconValues = () => new Set(Array.from(iconEl.options).map(option => option.value));
 
     const ensureIconOption = value => {
@@ -1108,6 +1164,9 @@ document.addEventListener('DOMContentLoaded', () => {
       has_password: item.dataset.hasPassword === '1',
       is_age_restricted: item.dataset.ageRestricted === '1',
       is_spoiler: item.dataset.spoiler === '1',
+      is_featured: item.dataset.featured === '1',
+      featured_pin_top: item.dataset.featuredPinTop === '1',
+      featured_thumbnail_url: item.dataset.featuredThumbnailUrl || '',
       order_index: Number(item.dataset.order || 0) || 1
     });
 
@@ -1124,6 +1183,9 @@ document.addEventListener('DOMContentLoaded', () => {
         is_age_restricted:
           overrides.is_age_restricted == null ? (current.is_age_restricted ? 1 : 0) : asBoolean(overrides.is_age_restricted) ? 1 : 0,
         is_spoiler: overrides.is_spoiler == null ? (current.is_spoiler ? 1 : 0) : asBoolean(overrides.is_spoiler) ? 1 : 0,
+        is_featured: overrides.is_featured == null ? (current.is_featured ? 1 : 0) : asBoolean(overrides.is_featured) ? 1 : 0,
+        featured_pin_top: overrides.featured_pin_top == null ? (current.featured_pin_top ? 1 : 0) : asBoolean(overrides.featured_pin_top) ? 1 : 0,
+        featured_thumbnail_url: overrides.featured_thumbnail_url ?? current.featured_thumbnail_url,
         access_password: '',
         clear_access_password: 0,
         order_index: Number(overrides.order_index || current.order_index || 1)
@@ -1236,6 +1298,8 @@ document.addEventListener('DOMContentLoaded', () => {
       const hasPassword = asBoolean(link.has_password);
       const isAgeRestricted = asBoolean(link.is_age_restricted);
       const isSpoiler = asBoolean(link.is_spoiler);
+      const isFeatured = asBoolean(link.is_featured);
+      const featuredPinTop = isFeatured && asBoolean(link.featured_pin_top);
       item.dataset.id = String(link.id || '');
       item.dataset.title = link.title || '';
       item.dataset.url = link.url || '';
@@ -1245,6 +1309,9 @@ document.addEventListener('DOMContentLoaded', () => {
       item.dataset.hasPassword = hasPassword ? '1' : '0';
       item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
       item.dataset.spoiler = isSpoiler ? '1' : '0';
+      item.dataset.featured = isFeatured ? '1' : '0';
+      item.dataset.featuredPinTop = featuredPinTop ? '1' : '0';
+      item.dataset.featuredThumbnailUrl = String(link.featured_thumbnail_url || '').trim();
       if (link.order_index != null) item.dataset.order = String(link.order_index);
 
       item.classList.toggle('is-hidden-link', !isVisible);
@@ -1283,6 +1350,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (agePill) agePill.hidden = !isAgeRestricted;
       const spoilerPill = $('.link-pill-spoiler', item);
       if (spoilerPill) spoilerPill.hidden = !isSpoiler;
+      const featuredPill = $('.link-pill-featured', item);
+      if (featuredPill) featuredPill.hidden = !isFeatured;
+      const pinPill = $('.link-pill-pin', item);
+      if (pinPill) pinPill.hidden = !featuredPinTop;
 
       applyColorChip($('.color-chip', item), link.color_hex || '#2a2a2a');
 
@@ -1309,6 +1380,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="link-pill link-pill-access" hidden>LOCKED</span>
           <span class="link-pill link-pill-age" hidden>18+</span>
           <span class="link-pill link-pill-spoiler" hidden>SPOILER</span>
+          <span class="link-pill link-pill-featured" hidden>FEATURED</span>
+          <span class="link-pill link-pill-pin" hidden>PINNED</span>
           <span class="color-chip" data-color="#2a2a2a" title="#2a2a2a"></span>
         </div>
         <div class="link-admin-actions">
@@ -1341,7 +1414,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
       if (ageRestrictedEl) ageRestrictedEl.checked = false;
       if (spoilerEl) spoilerEl.checked = false;
+      if (featuredEl) featuredEl.checked = false;
+      if (featuredPinTopEl) featuredPinTopEl.checked = false;
+      if (featuredThumbnailUrlEl) featuredThumbnailUrlEl.value = '';
       syncModalColor();
+      syncFeaturedControls();
       syncIconPreview();
       resetEnrichPreview();
       modal.open('link');
@@ -1362,7 +1439,11 @@ document.addEventListener('DOMContentLoaded', () => {
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
       if (ageRestrictedEl) ageRestrictedEl.checked = item.dataset.ageRestricted === '1';
       if (spoilerEl) spoilerEl.checked = item.dataset.spoiler === '1';
+      if (featuredEl) featuredEl.checked = item.dataset.featured === '1';
+      if (featuredPinTopEl) featuredPinTopEl.checked = item.dataset.featuredPinTop === '1';
+      if (featuredThumbnailUrlEl) featuredThumbnailUrlEl.value = item.dataset.featuredThumbnailUrl || '';
       syncModalColor();
+      syncFeaturedControls();
       syncIconPreview();
       resetEnrichPreview();
       modal.open('link');
@@ -1399,6 +1480,9 @@ document.addEventListener('DOMContentLoaded', () => {
         is_visible: visibleEl.checked ? 1 : 0,
         is_age_restricted: ageRestrictedEl?.checked ? 1 : 0,
         is_spoiler: spoilerEl?.checked ? 1 : 0,
+        is_featured: featuredEl?.checked ? 1 : 0,
+        featured_pin_top: featuredPinTopEl?.checked ? 1 : 0,
+        featured_thumbnail_url: featuredThumbnailUrlEl?.value || '',
         access_password: accessPasswordEl?.value || '',
         clear_access_password: clearAccessPasswordEl?.checked ? 1 : 0,
         order_index: orderIndex
@@ -1557,6 +1641,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     colorEl?.addEventListener('input', syncModalColor);
+    featuredEl?.addEventListener('change', syncFeaturedControls);
+    featuredPinTopEl?.addEventListener('change', syncFeaturedControls);
     colorEl?.addEventListener('change', syncModalColor);
     iconEl?.addEventListener('change', syncIconPreview);
     enrichBtn?.addEventListener('click', event => {
@@ -1613,6 +1699,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     syncOrderBadges();
     syncModalColor();
+    syncFeaturedControls();
     syncIconPreview();
     resetEnrichPreview();
   }

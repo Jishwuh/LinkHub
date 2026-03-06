@@ -6,6 +6,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 
 - Secure admin login with hashed passwords (`bcrypt`)
 - Link management (ordering, visibility, icons, custom color)
+- Featured spotlight link system (single featured link, optional pinned top placement, optional thumbnail)
 - Redirect management (`/slug -> target URL`)
 - Per-slug OpenGraph/Twitter metadata for redirects
 - Custom embed blocks (strictly sanitized iframe HTML)
@@ -35,6 +36,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Drag-and-drop reordering for links and blocks
   - Action buttons grouped per item (`Edit`, `Hide/Show`, `Del`)
   - Per-item order badges and clearer visibility state
+- Featured spotlight links:
+  - One featured link at a time (enforced server-side)
+  - Optional `Pin to top` to visually pull featured link out of the Links Cluster
+  - Optional thumbnail URL for larger, more visual spotlight card layout
 - Link enrichment workflow:
   - Paste a URL in `Create/Edit Link`
   - Auto-suggested title, icon key, and preview image
