@@ -10,7 +10,9 @@ const {
   suggestIconKeyFromHostname,
   sanitizeInternalReturnPath,
   isValidAccessPassword,
-  hasPasswordGate
+  hasPasswordGate,
+  buildAbsoluteAssetUrl,
+  isSocialPreviewUserAgent
 } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
@@ -119,4 +121,19 @@ test('hasPasswordGate detects configured hash fields', () => {
   assert.equal(hasPasswordGate({ access_password_hash: '' }), false);
   assert.equal(hasPasswordGate({ access_password_hash: '$2b$12$abc' }), true);
   assert.equal(hasPasswordGate({ page_access_password_hash: '$2b$12$abc' }), true);
+});
+
+test('buildAbsoluteAssetUrl resolves local uploads against site URL', () => {
+  assert.equal(
+    buildAbsoluteAssetUrl('/static/uploads/example.png', 'https://linkhub.example'),
+    'https://linkhub.example/static/uploads/example.png'
+  );
+  assert.equal(buildAbsoluteAssetUrl('https://cdn.example/hero.jpg', 'https://linkhub.example'), 'https://cdn.example/hero.jpg');
+  assert.equal(buildAbsoluteAssetUrl('/bad/path.png', 'https://linkhub.example'), '');
+});
+
+test('isSocialPreviewUserAgent detects common social preview crawlers', () => {
+  assert.equal(isSocialPreviewUserAgent('facebookexternalhit/1.1'), true);
+  assert.equal(isSocialPreviewUserAgent('Twitterbot/1.0'), true);
+  assert.equal(isSocialPreviewUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'), false);
 });

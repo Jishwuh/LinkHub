@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title><%= pageTitle || 'Redirecting...' %></title>
+  <meta name="description" content="<%= description || '' %>">
+  <meta name="robots" content="noindex,nofollow">
+
+  <meta property="og:title" content="<%= pageTitle || '' %>">
+  <meta property="og:description" content="<%= description || '' %>">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="<%= slugUrl || '' %>">
+  <meta property="og:image" content="<%= imageUrl || '' %>">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="<%= pageTitle || '' %>">
+  <meta name="twitter:description" content="<%= description || '' %>">
+  <meta name="twitter:image" content="<%= imageUrl || '' %>">
+
+  <meta http-equiv="refresh" content="0;url=<%= destinationUrl %>">
+  <script>
+    window.location.replace(<%- JSON.stringify(destinationUrl || '/') %>);
+  </script>
+</head>
+
+<body>
+  <main style="font-family: Arial, sans-serif; padding: 24px;">
+    <p>Redirecting to <a href="<%= destinationUrl %>"><%= destinationUrl %></a>...</p>
+    <p style="font-size: 0.9rem; color: #666;">Slug: /<%= slug || '' %></p>
+  </main>
+</body>
+
+</html>

@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/static/css/site.css">
 </head>
 
-<body>
+<body data-age-verified="<%= ageVerified ? '1' : '0' %>" data-continue-url="<%= continueUrl || returnTo %>">
   <main class="auth-container">
     <section class="form cardy">
       <h1><%= title || 'Protected Content' %></h1>
@@ -17,11 +17,24 @@
       <% } %>
 
       <% if (mode === 'age') { %>
-        <form method="POST" action="/access/age-verify">
-          <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-          <input type="hidden" name="return_to" value="<%= returnTo %>">
-          <button type="submit">I am 18 or over</button>
-        </form>
+        <% if (ageVerified) { %>
+          <p id="age-redirect-status" class="muted small">Please wait while we redirect you...</p>
+          <p id="age-redirect-fallback" class="muted small" hidden>Redirect taking longer than expected?</p>
+          <a id="age-continue-link" class="btn-secondary" href="<%= continueUrl || returnTo %>" hidden>Click here to go to your link</a>
+          <noscript>
+            <p class="muted small">JavaScript is disabled.</p>
+            <a class="btn-secondary" href="<%= continueUrl || returnTo %>">Click here to go to your link</a>
+          </noscript>
+        <% } else { %>
+          <form method="POST" action="/access/age-verify">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="return_to" value="<%= returnTo %>">
+            <input type="hidden" name="context_type" value="<%= contextType %>">
+            <input type="hidden" name="context_id_or_slug" value="<%= contextIdOrSlug %>">
+            <p class="muted small">Confirm your age to continue.</p>
+            <button type="submit">I am 18 or over</button>
+          </form>
+        <% } %>
       <% } else { %>
         <form method="POST" action="/access/password-unlock">
           <input type="hidden" name="_csrf" value="<%= csrfToken %>">
@@ -36,6 +49,9 @@
       <% } %>
     </section>
   </main>
+  <% if (mode === 'age' && ageVerified) { %>
+    <script src="/static/js/access_gate.js" defer></script>
+  <% } %>
 </body>
 
 </html>

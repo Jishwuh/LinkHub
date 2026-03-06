@@ -2257,6 +2257,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const idEl = $('#redirect-modal-id');
     const slugEl = $('#redirect-modal-slug');
     const urlEl = $('#redirect-modal-url');
+    const ogTitleEl = $('#redirect-modal-og-title');
+    const ogDescriptionEl = $('#redirect-modal-og-description');
+    const ogImageEl = $('#redirect-modal-og-image');
     const activeEl = $('#redirect-modal-active');
     const accessPasswordEl = $('#redirect-modal-access-password');
     const clearAccessPasswordEl = $('#redirect-modal-clear-access-password');
@@ -2272,6 +2275,10 @@ document.addEventListener('DOMContentLoaded', () => {
       item.dataset.active = isActive ? '1' : '0';
       item.dataset.hasPassword = hasPassword ? '1' : '0';
       item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
+      item.dataset.ogTitle = redirect.og_title || '';
+      item.dataset.ogDescription = redirect.og_description || '';
+      item.dataset.ogImage = redirect.og_image || '';
+      item.dataset.hasCustomOg = asBoolean(redirect.has_custom_og) ? '1' : '0';
 
       item.classList.toggle('is-hidden-link', !isActive);
 
@@ -2290,6 +2297,8 @@ document.addEventListener('DOMContentLoaded', () => {
       if (accessPill) accessPill.hidden = !hasPassword;
       const agePill = $('.link-pill-age', item);
       if (agePill) agePill.hidden = !isAgeRestricted;
+      const ogPill = $('.link-pill-og', item);
+      if (ogPill) ogPill.hidden = item.dataset.hasCustomOg !== '1';
 
       const toggleBtn = $('[data-action="toggle"]', item);
       if (toggleBtn) {
@@ -2304,7 +2313,11 @@ document.addEventListener('DOMContentLoaded', () => {
       target_url: item.dataset.url || '',
       is_active: item.dataset.active === '1',
       has_password: item.dataset.hasPassword === '1',
-      is_age_restricted: item.dataset.ageRestricted === '1'
+      is_age_restricted: item.dataset.ageRestricted === '1',
+      og_title: item.dataset.ogTitle || '',
+      og_description: item.dataset.ogDescription || '',
+      og_image: item.dataset.ogImage || '',
+      has_custom_og: item.dataset.hasCustomOg === '1'
     });
 
     const createRedirectItem = redirect => {
@@ -2320,6 +2333,7 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="link-pill"></span>
           <span class="link-pill link-pill-access" hidden>LOCKED</span>
           <span class="link-pill link-pill-age" hidden>18+</span>
+          <span class="link-pill link-pill-og" hidden title="Custom social preview metadata">OG</span>
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
@@ -2353,6 +2367,9 @@ document.addEventListener('DOMContentLoaded', () => {
       idEl.value = '';
       slugEl.value = '';
       urlEl.value = '';
+      if (ogTitleEl) ogTitleEl.value = '';
+      if (ogDescriptionEl) ogDescriptionEl.value = '';
+      if (ogImageEl) ogImageEl.value = '';
       activeEl.checked = true;
       if (accessPasswordEl) accessPasswordEl.value = '';
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
@@ -2366,6 +2383,9 @@ document.addEventListener('DOMContentLoaded', () => {
       idEl.value = item.dataset.id || '';
       slugEl.value = item.dataset.slug || '';
       urlEl.value = item.dataset.url || '';
+      if (ogTitleEl) ogTitleEl.value = item.dataset.ogTitle || '';
+      if (ogDescriptionEl) ogDescriptionEl.value = item.dataset.ogDescription || '';
+      if (ogImageEl) ogImageEl.value = item.dataset.ogImage || '';
       activeEl.checked = item.dataset.active !== '0';
       if (accessPasswordEl) accessPasswordEl.value = '';
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
@@ -2385,6 +2405,9 @@ document.addEventListener('DOMContentLoaded', () => {
         id,
         slug: slugEl.value,
         target_url: urlEl.value,
+        og_title: ogTitleEl?.value || '',
+        og_description: ogDescriptionEl?.value || '',
+        og_image: ogImageEl?.value || '',
         is_active: activeEl.checked ? 1 : 0,
         is_age_restricted: ageRestrictedEl?.checked ? 1 : 0,
         access_password: accessPasswordEl?.value || '',

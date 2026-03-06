@@ -434,7 +434,11 @@
               data-url="<%= r.target_url %>"
               data-active="<%= r.is_active ? '1' : '0' %>"
               data-has-password="<%= r.has_password ? '1' : '0' %>"
-              data-age-restricted="<%= r.is_age_restricted ? '1' : '0' %>">
+              data-age-restricted="<%= r.is_age_restricted ? '1' : '0' %>"
+              data-og-title="<%= r.og_title || '' %>"
+              data-og-description="<%= r.og_description || '' %>"
+              data-og-image="<%= r.og_image || '' %>"
+              data-has-custom-og="<%= r.has_custom_og ? '1' : '0' %>">
               <button type="button" class="icon-action" title="Slug" aria-label="Slug">/</button>
               <div class="link-admin-main">
                 <div class="link-admin-title">/<%= r.slug %></div>
@@ -444,6 +448,7 @@
                 <span class="link-pill"><%= r.is_active ? 'Active' : 'Inactive' %></span>
                 <span class="link-pill link-pill-access" <%= r.has_password ? '' : 'hidden' %>>LOCKED</span>
                 <span class="link-pill link-pill-age" <%= r.is_age_restricted ? '' : 'hidden' %>>18+</span>
+                <span class="link-pill link-pill-og" <%= r.has_custom_og ? '' : 'hidden' %> title="Custom social preview metadata">OG</span>
               </div>
               <div class="link-admin-actions">
                 <button type="button" class="icon-action" data-action="edit" title="Edit redirect">Edit</button>
@@ -936,6 +941,18 @@
             <label class="modal-field">
               <span class="modal-label">Target URL</span>
               <input name="target_url" id="redirect-modal-url" type="url" placeholder="https://..." required>
+            </label>
+            <label class="modal-field">
+              <span class="modal-label">OG title (optional)</span>
+              <input name="og_title" id="redirect-modal-og-title" placeholder="Social card title for this slug">
+            </label>
+            <label class="modal-field modal-field-span2">
+              <span class="modal-label">OG description (optional)</span>
+              <textarea name="og_description" id="redirect-modal-og-description" rows="3" placeholder="Social card description for this slug"></textarea>
+            </label>
+            <label class="modal-field modal-field-span2">
+              <span class="modal-label">OG image URL (optional)</span>
+              <input name="og_image" id="redirect-modal-og-image" placeholder="https://.../social-image.jpg">
             </label>
             <label class="modal-field">
               <span class="modal-label">Access password (optional)</span>

@@ -64,8 +64,8 @@
 - [x] **Auto link enrichment**
   - [x] Paste URL → suggest title + icon + preview image
 
-- [ ] **Per-slug OpenGraph**
-  - [ ] Custom OG/Twitter preview per redirect slug (not just per page)
+- [x] **Per-slug OpenGraph**
+  - [x] Custom OG/Twitter preview per redirect slug (not just per page)
 
 - [x] **Private content**
   - [x] Password-protected page or hidden blocks/links (If redirect has password, should contain an "unlock" page asking for password to lead them to the content/page).

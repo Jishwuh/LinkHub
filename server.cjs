@@ -515,6 +515,24 @@ function normalizeMediaAsset(value) {
   return normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
 }
 
+function buildAbsoluteAssetUrl(value, siteUrl) {
+  const direct = normalizeHttpUrl(value);
+  if (direct) return direct;
+
+  const localPath = normalizeLocalAssetPath(value);
+  const normalizedSiteUrl = normalizeHttpUrl(siteUrl);
+  if (!localPath || !normalizedSiteUrl) return '';
+  return `${normalizedSiteUrl.replace(/\/+$/, '')}${localPath.startsWith('/') ? '' : '/'}${localPath}`;
+}
+
+function isSocialPreviewUserAgent(userAgentValue) {
+  const ua = String(userAgentValue || '').toLowerCase();
+  if (!ua) return false;
+  return /(facebookexternalhit|facebot|twitterbot|linkedinbot|slackbot|discordbot|telegrambot|whatsapp|skypeuripreview|embedly|pinterest|redditbot|preview)/.test(
+    ua
+  );
+}
+
 function mediaLooksLikeVideo(value) {
   const raw = String(value || '').toLowerCase();
   return /\.(mp4|webm|ogg)(\?|#|$)/.test(raw);
@@ -980,6 +998,15 @@ function createApp(passedConfig) {
     if (!names.includes('is_age_restricted')) {
       await run('ALTER TABLE redirects ADD COLUMN is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash');
     }
+    if (!names.includes('og_title')) {
+      await run("ALTER TABLE redirects ADD COLUMN og_title VARCHAR(255) NOT NULL DEFAULT '' AFTER is_age_restricted");
+    }
+    if (!names.includes('og_description')) {
+      await run("ALTER TABLE redirects ADD COLUMN og_description VARCHAR(280) NOT NULL DEFAULT '' AFTER og_title");
+    }
+    if (!names.includes('og_image')) {
+      await run("ALTER TABLE redirects ADD COLUMN og_image VARCHAR(2048) NOT NULL DEFAULT '' AFTER og_description");
+    }
 
     const idx = await q('SHOW INDEX FROM redirects WHERE Key_name = "uq_redirects_slug"').catch(() => []);
     if (!idx || idx.length === 0) {
@@ -1105,6 +1132,12 @@ function createApp(passedConfig) {
     return req.session.age_unlock_paths;
   }
 
+  function toPathnameOnly(pathValue) {
+    const safe = sanitizeInternalReturnPath(pathValue, '/');
+    const raw = safe.split('#', 1)[0].split('?', 1)[0];
+    return sanitizeInternalReturnPath(raw || '/', '/');
+  }
+
   function isAgeVerified(req) {
     if (req._ageVerifiedCached != null) {
       return req._ageVerifiedCached === true;
@@ -1124,10 +1157,18 @@ function createApp(passedConfig) {
     }
 
     const currentPath = sanitizeInternalReturnPath(req.originalUrl || req.path || '/', '/');
-    const expiresAt = Number(store[currentPath] || 0);
-    const ok = Number.isFinite(expiresAt) && expiresAt >= now;
+    const pathnameOnly = toPathnameOnly(currentPath);
+    const candidates = pathnameOnly === currentPath ? [currentPath] : [currentPath, pathnameOnly];
+    let ok = false;
+    for (const key of candidates) {
+      const expiresAt = Number(store[key] || 0);
+      if (Number.isFinite(expiresAt) && expiresAt >= now) {
+        ok = true;
+        break;
+      }
+    }
     if (ok) {
-      delete store[currentPath];
+      for (const key of candidates) delete store[key];
     }
     req._ageVerifiedCached = ok;
     return ok;
@@ -1137,7 +1178,40 @@ function createApp(passedConfig) {
     const store = getAgeUnlockStore(req);
     if (!store) return;
     const path = sanitizeInternalReturnPath(returnTo, '/');
-    store[path] = Date.now() + AGE_VERIFY_UNLOCK_MAX_AGE_MS;
+    const expiresAt = Date.now() + AGE_VERIFY_UNLOCK_MAX_AGE_MS;
+    store[path] = expiresAt;
+    store[toPathnameOnly(path)] = expiresAt;
+  }
+
+  function hasAgeBypassCookie(req) {
+    const cookies = parseCookieMap(req.headers?.cookie || '');
+    return String(cookies.lh_age_ok || '') === '1';
+  }
+
+  function setAgeBypassCookie(res) {
+    res.cookie('lh_age_ok', '1', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.isProd,
+      path: '/',
+      maxAge: 30 * 1000
+    });
+  }
+
+  function clearAgeBypassCookie(res) {
+    res.clearCookie('lh_age_ok', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: config.isProd,
+      path: '/'
+    });
+  }
+
+  async function persistSession(req) {
+    if (!req.session) return;
+    await new Promise((resolve, reject) => {
+      req.session.save(err => (err ? reject(err) : resolve()));
+    });
   }
 
   async function verifyPasswordAgainstHash(password, hash) {
@@ -1195,13 +1269,20 @@ function createApp(passedConfig) {
 
   function sanitizeRedirectForAdmin(row) {
     if (!row) return null;
+    const ogTitle = sanitizeText(row.og_title || '', 255);
+    const ogDescription = sanitizeText(row.og_description || '', 280);
+    const ogImage = normalizeMediaAsset(row.og_image || '');
     return {
       id: Number(row.id || 0),
       slug: row.slug || '',
       target_url: row.target_url || '',
       is_active: Number(row.is_active || 0) ? 1 : 0,
       has_password: hasPasswordGate(row) ? 1 : 0,
-      is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0
+      is_age_restricted: parseBoolean(row.is_age_restricted, false) ? 1 : 0,
+      og_title: ogTitle,
+      og_description: ogDescription,
+      og_image: ogImage,
+      has_custom_og: ogTitle || ogDescription || ogImage ? 1 : 0
     };
   }
 
@@ -1225,12 +1306,19 @@ function createApp(passedConfig) {
     const title = sanitizeText(payload.title || 'Protected Content', 140) || 'Protected Content';
     const subtitle = sanitizeText(payload.subtitle || '', 255);
     const csrfToken = String(payload.csrfToken || '');
+    const ageVerified = parseBoolean(payload.ageVerified, false);
+    const continueUrlRaw = String(payload.continueUrl || '').trim();
+    const continueUrl = continueUrlRaw.startsWith('/')
+      ? sanitizeInternalReturnPath(continueUrlRaw, returnTo)
+      : normalizeHttpUrl(continueUrlRaw) || returnTo;
     const statusCode = Number.isInteger(payload.status) && payload.status >= 200 ? payload.status : 200;
 
     return res.status(statusCode).render('access_gate', {
       mode,
       title,
       subtitle,
+      ageVerified,
+      continueUrl,
       returnTo,
       contextType,
       contextIdOrSlug,
@@ -1694,7 +1782,13 @@ function createApp(passedConfig) {
       CREATE TABLE IF NOT EXISTS redirects (
         id INT AUTO_INCREMENT PRIMARY KEY,
         slug VARCHAR(191) UNIQUE NOT NULL,
-        target_url VARCHAR(2048) NOT NULL
+        target_url VARCHAR(2048) NOT NULL,
+        is_active TINYINT(1) NOT NULL DEFAULT 1,
+        access_password_hash VARCHAR(255) NULL,
+        is_age_restricted TINYINT(1) NOT NULL DEFAULT 0,
+        og_title VARCHAR(255) NOT NULL DEFAULT '',
+        og_description VARCHAR(280) NOT NULL DEFAULT '',
+        og_image VARCHAR(2048) NOT NULL DEFAULT ''
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
     await run(`
@@ -1855,11 +1949,10 @@ function createApp(passedConfig) {
       const plainBio = (settings.bio || '').replace(/<[^>]+>/g, '').trim();
       const metaDescription = (settings.og_description || plainBio || 'All my links in one place!').slice(0, 280);
 
-      let ogImage = normalizeHttpUrl(settings.og_image) || normalizeLocalAssetPath(settings.og_image) || normalizeLocalAssetPath(settings.avatar_path);
-      if (!ogImage) ogImage = '/static/og-default.jpg';
-      if (!/^https?:\/\//i.test(ogImage)) {
-        ogImage = `${siteUrl.replace(/\/+$/, '')}${ogImage.startsWith('/') ? '' : '/'}${ogImage}`;
-      }
+      let ogImage =
+        buildAbsoluteAssetUrl(settings.og_image, siteUrl) ||
+        buildAbsoluteAssetUrl(settings.avatar_path, siteUrl) ||
+        `${siteUrl.replace(/\/+$/, '')}/static/og-default.jpg`;
 
       res.render('index', {
         blocks,
@@ -1971,6 +2064,7 @@ function createApp(passedConfig) {
       }
 
       markUnlocked(req, contextType, contextKey);
+      await persistSession(req);
       if (wantsJson(req)) {
         return res.json({ ok: true, message: 'Unlocked', redirect_to: returnTo });
       }
@@ -1984,11 +2078,50 @@ function createApp(passedConfig) {
     requireCsrf,
     asyncHandler(async (req, res) => {
       const returnTo = sanitizeInternalReturnPath(req.body?.return_to, '/');
+      const contextType = sanitizeAccessContextType(req.body?.context_type);
+      const contextIdOrSlugRaw = String(req.body?.context_id_or_slug || '').trim();
+      const returnToQuery = (() => {
+        const idx = returnTo.indexOf('?');
+        return idx >= 0 ? returnTo.slice(idx + 1) : '';
+      })();
+      const utm = readUtmParamsFromQuery(Object.fromEntries(new URLSearchParams(returnToQuery))).params;
+      let continueUrl = returnTo;
       markAgeVerified(req, res, returnTo);
-      if (wantsJson(req)) {
-        return res.json({ ok: true, message: 'Age verification complete' });
+      if (contextType === 'redirect') {
+        const slug = sanitizeSlug(contextIdOrSlugRaw);
+        if (slug) {
+          markAgeVerified(req, res, `/${slug}`);
+          const row = await get('SELECT target_url FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
+          const destination = buildTrackedDestinationUrl(row?.target_url || '', utm);
+          if (destination) continueUrl = destination;
+        }
+      } else if (contextType === 'link') {
+        const id = Number.parseInt(contextIdOrSlugRaw, 10);
+        if (Number.isInteger(id) && id > 0) {
+          markAgeVerified(req, res, `/out/${id}`);
+          const row = await get('SELECT url FROM links WHERE id = ?', [id]);
+          const destination = buildTrackedDestinationUrl(row?.url || '', utm);
+          if (destination) continueUrl = destination;
+        }
+      } else if (contextType === 'page') {
+        markAgeVerified(req, res, '/');
       }
-      return res.redirect(returnTo);
+      setAgeBypassCookie(res);
+      await persistSession(req);
+      if (wantsJson(req)) {
+        return res.json({ ok: true, message: 'Age verification complete', continue_url: continueUrl });
+      }
+      return renderAccessGate(res, {
+        mode: 'age',
+        title: 'Age verification complete',
+        subtitle: 'Please wait while we redirect you.',
+        ageVerified: true,
+        continueUrl,
+        returnTo,
+        contextType,
+        contextIdOrSlug: contextIdOrSlugRaw,
+        csrfToken: req.session?.csrfToken || ''
+      });
     })
   );
 
@@ -2014,6 +2147,10 @@ function createApp(passedConfig) {
         });
       }
 
+      if (hasAgeBypassCookie(req)) {
+        req._ageVerifiedCached = true;
+        clearAgeBypassCookie(res);
+      }
       if (shouldGateByAge(link, req)) {
         return renderAccessGate(res, {
           mode: 'age',
@@ -2865,6 +3002,9 @@ function createApp(passedConfig) {
       const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
+      const ogTitle = sanitizeText(req.body?.og_title, 255);
+      const ogDescription = sanitizeText(req.body?.og_description, 280);
+      const ogImage = normalizeMediaAsset(req.body?.og_image);
 
       if (!slug || !targetUrl) return res.status(400).send('Valid slug and target URL are required');
       if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
@@ -2887,18 +3027,21 @@ function createApp(passedConfig) {
 
       let redirectId = id;
       if (id > 0) {
-        await run('UPDATE redirects SET slug = ?, target_url = ?, is_active = ?, access_password_hash = ?, is_age_restricted = ? WHERE id = ?', [
+        await run('UPDATE redirects SET slug = ?, target_url = ?, is_active = ?, access_password_hash = ?, is_age_restricted = ?, og_title = ?, og_description = ?, og_image = ? WHERE id = ?', [
           slug,
           targetUrl,
           isActive,
           accessPasswordHash || null,
           isAgeRestricted,
+          ogTitle,
+          ogDescription,
+          ogImage,
           id
         ]);
       } else {
         const insertResult = await runResult(
-          'INSERT INTO redirects (slug, target_url, is_active, access_password_hash, is_age_restricted) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active), access_password_hash = VALUES(access_password_hash), is_age_restricted = VALUES(is_age_restricted)',
-          [slug, targetUrl, isActive, accessPasswordHash || null, isAgeRestricted]
+          'INSERT INTO redirects (slug, target_url, is_active, access_password_hash, is_age_restricted, og_title, og_description, og_image) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE target_url = VALUES(target_url), is_active = VALUES(is_active), access_password_hash = VALUES(access_password_hash), is_age_restricted = VALUES(is_age_restricted), og_title = VALUES(og_title), og_description = VALUES(og_description), og_image = VALUES(og_image)',
+          [slug, targetUrl, isActive, accessPasswordHash || null, isAgeRestricted, ogTitle, ogDescription, ogImage]
         );
 
         if (insertResult.insertId) {
@@ -2977,7 +3120,10 @@ function createApp(passedConfig) {
       const slug = sanitizeSlug(req.params.slug);
       if (!slug) return next();
 
-      const row = await get('SELECT id, slug, target_url, access_password_hash, is_age_restricted FROM redirects WHERE slug = ? AND is_active = 1', [slug]);
+      const row = await get(
+        'SELECT id, slug, target_url, access_password_hash, is_age_restricted, og_title, og_description, og_image FROM redirects WHERE slug = ? AND is_active = 1',
+        [slug]
+      );
       if (row?.target_url) {
         if (hasPasswordGate(row) && !isUnlocked(req, 'redirect', row.slug)) {
           return renderAccessGate(res, {
@@ -2991,6 +3137,10 @@ function createApp(passedConfig) {
           });
         }
 
+        if (hasAgeBypassCookie(req)) {
+          req._ageVerifiedCached = true;
+          clearAgeBypassCookie(res);
+        }
         if (shouldGateByAge(row, req)) {
           return renderAccessGate(res, {
             mode: 'age',
@@ -3006,6 +3156,34 @@ function createApp(passedConfig) {
         const utm = readUtmParamsFromQuery(req.query).params;
         const destinationUrl = buildTrackedDestinationUrl(row.target_url, utm);
         if (!destinationUrl) return next();
+
+        const shouldRenderPreviewPage =
+          parseBoolean(req.query?.preview, false) || isSocialPreviewUserAgent(req.get('user-agent') || '');
+        if (shouldRenderPreviewPage) {
+          const settings = await getSettingsMap();
+          const siteUrl = normalizeHttpUrl(settings.site_url) || `https://${config.publicDomain}`;
+          const slugUrl = `${siteUrl.replace(/\/+$/, '')}/${encodeURIComponent(row.slug)}`;
+          const pageTitle = sanitizeText(settings.page_title || settings.site_title || 'LinkHub', 255) || 'LinkHub';
+          const plainBio = (settings.bio || '').replace(/<[^>]+>/g, '').trim();
+          const defaultDescription = sanitizeText(settings.og_description || plainBio || 'All my links in one place!', 280);
+
+          const ogTitle = sanitizeText(row.og_title || '', 255) || pageTitle;
+          const ogDescription = sanitizeText(row.og_description || '', 280) || defaultDescription;
+          const ogImage =
+            buildAbsoluteAssetUrl(row.og_image, siteUrl) ||
+            buildAbsoluteAssetUrl(settings.og_image, siteUrl) ||
+            buildAbsoluteAssetUrl(settings.avatar_path, siteUrl) ||
+            `${siteUrl.replace(/\/+$/, '')}/static/og-default.jpg`;
+
+          return res.render('redirect_preview', {
+            pageTitle: ogTitle,
+            description: ogDescription,
+            imageUrl: ogImage,
+            slugUrl,
+            destinationUrl,
+            slug: row.slug
+          });
+        }
 
         try {
           await recordClickEvent(req, {
@@ -3103,5 +3281,7 @@ module.exports = {
   buildTrackedDestinationUrl,
   sanitizeInternalReturnPath,
   isValidAccessPassword,
-  hasPasswordGate
+  hasPasswordGate,
+  buildAbsoluteAssetUrl,
+  isSocialPreviewUserAgent
 };

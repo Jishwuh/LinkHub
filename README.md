@@ -7,6 +7,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Secure admin login with hashed passwords (`bcrypt`)
 - Link management (ordering, visibility, icons, custom color)
 - Redirect management (`/slug -> target URL`)
+- Per-slug OpenGraph/Twitter metadata for redirects
 - Custom embed blocks (strictly sanitized iframe HTML)
 - Per-link and per-redirect analytics (clicks, CTR, referrers, device, geo, hour, UTM)
 - QR code generator in admin (profile, links, blocks, redirects)
@@ -50,6 +51,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - UTM campaign breakdown in admin
   - UTM builder modal + `Copy Tracked Link` on links/redirects
   - CSV export for all events, link-only, or redirect-only scopes
+- Redirect social previews:
+  - Per-redirect `OG title`, `OG description`, and `OG image URL` in Redirect modal
+  - Social crawler requests to `/:slug` receive slug-specific OG/Twitter metadata
+  - Normal user requests still perform immediate 302 redirect + analytics tracking
 - Color picker and swatch improvements:
   - Profile theme color now has live swatch preview
   - Link color fields include swatch preview + hover hex visibility

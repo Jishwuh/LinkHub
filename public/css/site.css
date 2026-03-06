@@ -1407,6 +1407,11 @@ button,
   color: #f8c0ff;
 }
 
+.link-pill-og {
+  border-color: rgba(168, 243, 255, 0.42);
+  color: #b9f3ff;
+}
+
 .link-admin-actions {
   display: flex;
   gap: 6px;
