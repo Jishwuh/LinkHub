@@ -31,10 +31,10 @@
   - [ ] Template gallery in admin with one-click apply
   - [ ] Theme presets: Minimal, Glass, Neon, Creator, Business, Dark
 
-- [ ] **Modern animations (optional + accessible)**
-  - [ ] Staggered entrance animation for blocks/links
-  - [ ] Button microinteractions: hover lift, subtle glow, press feedback
-  - [ ] Respect `prefers-reduced-motion`
+- [x] **Modern animations (optional + accessible)**
+  - [x] Staggered entrance animation for blocks/links
+  - [x] Button microinteractions: hover lift, subtle glow, press feedback
+  - [x] Respect `prefers-reduced-motion`
 
 - [x] **Featured / spotlight link**
   - [x] Allow 1 featured block with bigger card layout + thumbnail

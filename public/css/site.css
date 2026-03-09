@@ -277,12 +277,13 @@ body.font-mono {
   text-decoration: none;
   color: var(--text);
   border: 1px solid var(--border);
-  transition: transform 0.16s ease, border-color 0.25s ease, background 0.25s ease;
+  transition: transform 0.18s ease, border-color 0.25s ease, background 0.25s ease, box-shadow 0.25s ease, filter 0.2s ease;
 }
 
 .link-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.26), 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent) inset;
 }
 
 .link-card .icon {
@@ -742,19 +743,43 @@ body.btn-glass .link-card {
   }
 }
 
+@keyframes stagger-reveal-subtle {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.988);
+    filter: blur(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes stagger-reveal-energetic {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.976);
+    filter: blur(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
 .like-pill.pop .heart {
   animation: lh-heartbeat 280ms ease-out;
 }
 
-body.anim-subtle .hero,
-body.anim-subtle .links,
-body.anim-subtle .live-embeds {
+body.anim-subtle .hero {
   animation: fade-slide-up 360ms ease-out both;
 }
 
-body.anim-energetic .hero,
-body.anim-energetic .links,
-body.anim-energetic .live-embeds {
+body.anim-energetic .hero {
   animation: fade-slide-up 520ms cubic-bezier(0.17, 0.67, 0.24, 1.03) both;
 }
 
@@ -762,8 +787,93 @@ body.anim-energetic .link-card:hover {
   transform: translateY(-2px) scale(1.015);
 }
 
+.links > *:nth-child(1),
+.custom-blocks > *:nth-child(1),
+.live-embeds > *:nth-child(1) { --stagger-index: 0; }
+.links > *:nth-child(2),
+.custom-blocks > *:nth-child(2),
+.live-embeds > *:nth-child(2) { --stagger-index: 1; }
+.links > *:nth-child(3),
+.custom-blocks > *:nth-child(3),
+.live-embeds > *:nth-child(3) { --stagger-index: 2; }
+.links > *:nth-child(4),
+.custom-blocks > *:nth-child(4),
+.live-embeds > *:nth-child(4) { --stagger-index: 3; }
+.links > *:nth-child(5),
+.custom-blocks > *:nth-child(5),
+.live-embeds > *:nth-child(5) { --stagger-index: 4; }
+.links > *:nth-child(6),
+.custom-blocks > *:nth-child(6),
+.live-embeds > *:nth-child(6) { --stagger-index: 5; }
+.links > *:nth-child(7),
+.custom-blocks > *:nth-child(7),
+.live-embeds > *:nth-child(7) { --stagger-index: 6; }
+.links > *:nth-child(8),
+.custom-blocks > *:nth-child(8),
+.live-embeds > *:nth-child(8) { --stagger-index: 7; }
+.links > *:nth-child(9),
+.custom-blocks > *:nth-child(9),
+.live-embeds > *:nth-child(9) { --stagger-index: 8; }
+.links > *:nth-child(10),
+.custom-blocks > *:nth-child(10),
+.live-embeds > *:nth-child(10) { --stagger-index: 9; }
+.links > *:nth-child(11),
+.custom-blocks > *:nth-child(11),
+.live-embeds > *:nth-child(11) { --stagger-index: 10; }
+.links > *:nth-child(12),
+.custom-blocks > *:nth-child(12),
+.live-embeds > *:nth-child(12) { --stagger-index: 11; }
+
+body.anim-subtle .links > *,
+body.anim-subtle .custom-blocks > *,
+body.anim-subtle .live-embeds > * {
+  opacity: 0;
+  animation: stagger-reveal-subtle 340ms ease-out forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 55ms);
+}
+
+body.anim-energetic .links > *,
+body.anim-energetic .custom-blocks > *,
+body.anim-energetic .live-embeds > * {
+  opacity: 0;
+  animation: stagger-reveal-energetic 470ms cubic-bezier(0.18, 0.76, 0.22, 1) forwards;
+  animation-delay: calc(var(--stagger-index, 0) * 70ms);
+}
+
+.link-card,
+.block-button-link,
+.icon-btn,
+.like-pill,
+.access-action-btn,
+button,
+a.btn-secondary {
+  transition: transform 150ms ease, box-shadow 180ms ease, filter 140ms ease, border-color 180ms ease;
+}
+
+.link-card:hover,
+.block-button-link:hover,
+.icon-btn:hover,
+.like-pill:hover,
+.access-action-btn:hover,
+button:hover,
+a.btn-secondary:hover {
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.24), 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent) inset;
+  filter: brightness(1.03);
+}
+
+.link-card:active,
+.block-button-link:active,
+.icon-btn:active,
+.like-pill:active,
+.access-action-btn:active,
+button:active,
+a.btn-secondary:active {
+  transform: translateY(1px) scale(0.98);
+}
+
 body.anim-none .hero,
 body.anim-none .links,
+body.anim-none .custom-blocks,
 body.anim-none .live-embeds,
 body.anim-none .link-card,
 body.anim-none .like-pill,
@@ -2388,12 +2498,21 @@ body.modal-open {
   }
 
   .link-card,
+  .custom-blocks,
   .hero,
   .links,
   .live-embeds,
+  .block-button-link,
+  .access-action-btn,
+  .icon-btn,
+  .like-pill,
+  button,
+  a.btn-secondary,
   .design-preview,
   .design-preview-bg {
     transition: none !important;
     animation: none !important;
+    transform: none !important;
+    filter: none !important;
   }
 }
