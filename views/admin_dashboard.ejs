@@ -92,11 +92,23 @@
             </div>
 
             <div class="grid bg-mode-group" data-bg-visible="image">
-              <label>Background image URL<input name="background_image_url" type="url" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg"></label>
+              <label>
+                Background image URL
+                <div class="asset-inline-input">
+                  <input id="settings-background-image-url" name="background_image_url" type="url" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg">
+                  <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-background-image-url" data-asset-kind="image">Library</button>
+                </div>
+              </label>
             </div>
 
             <div class="grid bg-mode-group" data-bg-visible="video">
-              <label>Background video URL<input name="background_video_url" type="url" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4"></label>
+              <label>
+                Background video URL
+                <div class="asset-inline-input">
+                  <input id="settings-background-video-url" name="background_video_url" type="url" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4">
+                  <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-background-video-url" data-asset-kind="video">Library</button>
+                </div>
+              </label>
             </div>
 
             <div class="grid bg-mode-group" data-bg-visible="image,video">
@@ -230,7 +242,13 @@
             </div>
             <label>Embed description<textarea name="og_description" rows="3"><%= settings.og_description || '' %></textarea></label>
             <div class="grid">
-              <label>OG image URL<input name="og_image" type="url" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg"></label>
+              <label>
+                OG image URL
+                <div class="asset-inline-input">
+                  <input id="settings-og-image-url" name="og_image" type="url" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg">
+                  <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-og-image-url" data-asset-kind="image">Library</button>
+                </div>
+              </label>
               <label>Upload OG image<input type="file" name="og_image_file" accept="image/png,image/jpeg,image/webp,image/gif"></label>
             </div>
             <label>Footer HTML<textarea name="footer_html" rows="3"><%= settings.footer_html || '' %></textarea></label>
@@ -422,6 +440,144 @@
         </div>
       </aside>
     </section>
+
+    <details class="admin-accordion">
+      <summary>
+        <span>Asset Manager</span>
+      </summary>
+      <section class="card section-card asset-manager-shell">
+        <header class="asset-manager-header">
+          <div>
+            <h3>Reusable Media Library</h3>
+            <p class="modal-hint">Upload once, reuse everywhere. Pick assets directly in background, block, and OG image fields.</p>
+          </div>
+          <div class="asset-stat-grid">
+            <div class="asset-stat-chip">
+              <span class="asset-stat-label">Total</span>
+              <strong id="asset-stat-total">0</strong>
+            </div>
+            <div class="asset-stat-chip">
+              <span class="asset-stat-label">Images</span>
+              <strong id="asset-stat-images">0</strong>
+            </div>
+            <div class="asset-stat-chip">
+              <span class="asset-stat-label">Videos</span>
+              <strong id="asset-stat-videos">0</strong>
+            </div>
+          </div>
+        </header>
+
+        <section class="asset-panel asset-panel-upload">
+          <h4>Upload + Optimize</h4>
+          <form id="asset-upload-form" class="asset-upload-form" enctype="multipart/form-data">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <div class="modal-grid modal-grid-2">
+              <label class="modal-field modal-field-span2">
+                <span class="modal-label">Upload file</span>
+                <input id="asset-upload-file" type="file" name="asset_file" accept="image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/ogg" required>
+              </label>
+              <label class="modal-field">
+                <span class="modal-label">Asset label</span>
+                <input id="asset-upload-label" name="label" placeholder="Homepage hero image">
+              </label>
+              <label class="modal-field">
+                <span class="modal-label">Alt text (images)</span>
+                <input id="asset-upload-alt-text" name="alt_text" placeholder="Describe the image for screen readers">
+              </label>
+            </div>
+            <section id="asset-image-tools" class="asset-image-tools" hidden>
+              <div class="modal-grid modal-grid-2">
+                <label class="checkbox modal-checkbox modal-checkbox-card">
+                  <input type="checkbox" id="asset-image-optimize" checked>
+                  <span class="modal-checkbox-copy">
+                    <span class="modal-checkbox-title">Optimize image</span>
+                    <span class="modal-checkbox-description">Resize/compress before upload to reduce file size.</span>
+                  </span>
+                </label>
+                <label class="modal-field">
+                  <span class="modal-label">Crop mode</span>
+                  <select id="asset-image-crop-mode">
+                    <option value="none">No crop</option>
+                    <option value="square">Square (1:1)</option>
+                    <option value="portrait">Portrait (4:5)</option>
+                    <option value="landscape">Landscape (16:9)</option>
+                  </select>
+                </label>
+                <label class="modal-field">
+                  <span class="modal-label">JPEG/WebP quality <strong id="asset-image-quality-value">82%</strong></span>
+                  <input id="asset-image-quality" type="range" min="40" max="95" step="1" value="82">
+                </label>
+                <label class="modal-field">
+                  <span class="modal-label">Max width (px)</span>
+                  <input id="asset-image-max-width" type="number" min="320" max="4000" step="10" value="1920">
+                </label>
+              </div>
+              <div class="asset-image-preview-wrap">
+                <canvas id="asset-image-preview-canvas" width="640" height="360"></canvas>
+                <p id="asset-image-preview-meta" class="modal-hint">Preview updates with crop/quality controls.</p>
+              </div>
+            </section>
+            <p id="asset-upload-status" class="modal-hint">Upload once and reuse URLs across image/video fields, especially block images.</p>
+            <div class="modal-actions">
+              <button type="submit" id="asset-upload-submit">Upload Asset</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="asset-panel asset-panel-library">
+          <div class="asset-library-toolbar">
+            <input id="asset-library-search" type="search" placeholder="Search assets by label, alt text, or path">
+            <button type="button" class="btn-secondary" id="asset-library-refresh-btn">Refresh</button>
+          </div>
+          <div id="asset-library-grid" class="asset-library-grid" data-empty-text="No assets uploaded yet.">
+            <% if (assets && assets.length) { %>
+              <% assets.forEach(a => { %>
+                <article
+                  class="asset-card"
+                  data-id="<%= a.id %>"
+                  data-path="<%= a.storage_path %>"
+                  data-media-type="<%= a.media_type %>"
+                  data-mime-type="<%= a.mime_type %>"
+                  data-byte-size="<%= a.byte_size %>"
+                  data-width="<%= a.width_px %>"
+                  data-height="<%= a.height_px %>"
+                  data-label="<%= a.label || '' %>"
+                  data-alt-text="<%= a.alt_text || '' %>"
+                  data-usage-count="<%= a.usage_count || 0 %>">
+                  <div class="asset-preview-shell">
+                    <% if (a.media_type === 'video') { %>
+                      <video class="asset-preview-media" src="<%= a.storage_path %>" controls muted preload="metadata"></video>
+                    <% } else { %>
+                      <img class="asset-preview-media" src="<%= a.storage_path %>" alt="<%= a.alt_text || '' %>" loading="lazy">
+                    <% } %>
+                  </div>
+                  <div class="asset-card-meta">
+                    <div class="asset-card-meta-top">
+                      <input class="asset-card-label-input" type="text" value="<%= a.label || '' %>" placeholder="Label">
+                      <span class="link-pill link-pill-asset-type"><%= a.media_type %></span>
+                      <span class="link-pill link-pill-asset-usage" <%= Number(a.usage_count || 0) > 0 ? '' : 'hidden' %>>In use: <%= Number(a.usage_count || 0) %></span>
+                    </div>
+                    <input class="asset-card-alt-input" type="text" value="<%= a.alt_text || '' %>" placeholder="Alt text (image assets)">
+                    <div class="asset-card-path" title="<%= a.storage_path %>"><%= a.storage_path %></div>
+                    <div class="asset-card-facts">
+                      <span><%= Number(a.byte_size || 0).toLocaleString() %> bytes</span>
+                      <span><%= Number(a.width_px || 0) > 0 && Number(a.height_px || 0) > 0 ? `${a.width_px}x${a.height_px}` : 'dimension unknown' %></span>
+                    </div>
+                    <div class="asset-card-actions">
+                      <button type="button" class="icon-action" data-action="copy-url" title="Copy asset URL">Copy URL</button>
+                      <button type="button" class="icon-action" data-action="save-meta" title="Save label/alt text">Save</button>
+                      <button type="button" class="icon-action danger" data-action="delete-asset" title="Delete asset">Delete</button>
+                    </div>
+                  </div>
+                </article>
+              <% }) %>
+            <% } else { %>
+              <div class="asset-library-empty">No assets uploaded yet.</div>
+            <% } %>
+          </div>
+        </section>
+      </section>
+    </details>
 
     <details class="admin-accordion">
       <summary>
@@ -796,7 +952,16 @@
             </div>
             <label class="modal-field" id="link-modal-featured-thumb-wrap">
               <span class="modal-label">Featured thumbnail URL (optional)</span>
-              <input name="featured_thumbnail_url" id="link-modal-featured-thumbnail-url" placeholder="https://.../featured-image.jpg">
+              <div class="asset-inline-input">
+                <input name="featured_thumbnail_url" id="link-modal-featured-thumbnail-url" placeholder="https://.../featured-image.jpg">
+                <button
+                  type="button"
+                  class="modal-inline-action asset-target-btn"
+                  data-asset-target="#link-modal-featured-thumbnail-url"
+                  data-asset-kind="image">
+                  Library
+                </button>
+              </div>
             </label>
           </section>
           <p class="modal-hint">Tip: use Icon key to match your link platform. You can still save without an icon.</p>
@@ -876,7 +1041,17 @@
           <div class="modal-grid modal-grid-2 block-type-group" data-block-type="image" hidden>
             <label class="modal-field">
               <span class="modal-label">Image URL</span>
-              <input name="image_src" id="block-image-src" type="url" placeholder="https://.../image.jpg">
+              <div class="asset-inline-input">
+                <input name="image_src" id="block-image-src" type="url" placeholder="https://.../image.jpg">
+                <button
+                  type="button"
+                  class="modal-inline-action asset-target-btn"
+                  data-asset-target="#block-image-src"
+                  data-asset-kind="image"
+                  data-asset-alt-target="#block-image-alt">
+                  Library
+                </button>
+              </div>
             </label>
             <label class="modal-field">
               <span class="modal-label">Alt text</span>
@@ -975,7 +1150,16 @@
             </label>
             <label class="modal-field modal-field-span2">
               <span class="modal-label">OG image URL (optional)</span>
-              <input name="og_image" id="redirect-modal-og-image" placeholder="https://.../social-image.jpg">
+              <div class="asset-inline-input">
+                <input name="og_image" id="redirect-modal-og-image" placeholder="https://.../social-image.jpg">
+                <button
+                  type="button"
+                  class="modal-inline-action asset-target-btn"
+                  data-asset-target="#redirect-modal-og-image"
+                  data-asset-kind="image">
+                  Library
+                </button>
+              </div>
             </label>
             <label class="modal-field">
               <span class="modal-label">Access password (optional)</span>
@@ -994,6 +1178,26 @@
             <button type="button" class="btn-secondary" data-modal-close>Cancel</button>
           </div>
         </form>
+      </section>
+
+      <section id="asset-picker-modal" class="modal-card" hidden>
+        <div class="modal-header">
+          <h3 id="asset-picker-modal-title">Select Asset</h3>
+          <button type="button" class="icon-action" data-modal-close aria-label="Close">✕</button>
+        </div>
+        <div class="asset-picker-toolbar">
+          <input id="asset-picker-search" type="search" placeholder="Search assets">
+          <select id="asset-picker-kind">
+            <option value="any">All media</option>
+            <option value="image">Images only</option>
+            <option value="video">Videos only</option>
+          </select>
+        </div>
+        <div id="asset-picker-grid" class="asset-picker-grid"></div>
+        <p id="asset-picker-status" class="modal-hint">Pick an asset to insert its URL into the selected field.</p>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" data-modal-close>Done</button>
+        </div>
       </section>
 
       <section id="qr-modal" class="modal-card" hidden>

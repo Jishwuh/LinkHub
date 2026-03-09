@@ -331,6 +331,7 @@ document.addEventListener('DOMContentLoaded', () => {
       link: $('#link-modal', overlay || document),
       block: $('#block-modal', overlay || document),
       redirect: $('#redirect-modal', overlay || document),
+      assetPicker: $('#asset-picker-modal', overlay || document),
       qr: $('#qr-modal', overlay || document),
       utm: $('#utm-modal', overlay || document)
     };
@@ -938,6 +939,817 @@ document.addEventListener('DOMContentLoaded', () => {
           filename: `block-${id || 'item'}-${type}`
         });
       }
+    };
+  }
+
+  function setupAssetManager(modal) {
+    const uploadForm = $('#asset-upload-form');
+    const uploadFileEl = $('#asset-upload-file');
+    const uploadLabelEl = $('#asset-upload-label');
+    const uploadAltTextEl = $('#asset-upload-alt-text');
+    const uploadStatusEl = $('#asset-upload-status');
+    const uploadSubmitEl = $('#asset-upload-submit');
+    const imageToolsEl = $('#asset-image-tools');
+    const imageOptimizeEl = $('#asset-image-optimize');
+    const imageCropModeEl = $('#asset-image-crop-mode');
+    const imageQualityEl = $('#asset-image-quality');
+    const imageQualityValueEl = $('#asset-image-quality-value');
+    const imageMaxWidthEl = $('#asset-image-max-width');
+    const imagePreviewCanvasEl = $('#asset-image-preview-canvas');
+    const imagePreviewMetaEl = $('#asset-image-preview-meta');
+    const libraryGridEl = $('#asset-library-grid');
+    const librarySearchEl = $('#asset-library-search');
+    const libraryRefreshBtnEl = $('#asset-library-refresh-btn');
+    const statTotalEl = $('#asset-stat-total');
+    const statImagesEl = $('#asset-stat-images');
+    const statVideosEl = $('#asset-stat-videos');
+    const pickerModalEl = $('#asset-picker-modal');
+    const pickerTitleEl = $('#asset-picker-modal-title');
+    const pickerSearchEl = $('#asset-picker-search');
+    const pickerKindEl = $('#asset-picker-kind');
+    const pickerGridEl = $('#asset-picker-grid');
+    const pickerStatusEl = $('#asset-picker-status');
+
+    if (!libraryGridEl || !uploadForm || !pickerModalEl || !pickerGridEl) {
+      return {
+        refresh: async () => {}
+      };
+    }
+
+    const state = {
+      assets: [],
+      pickerTarget: null
+    };
+
+    const toPositiveInt = (value, fallback = 0, min = 0, max = 10000) => {
+      const parsed = Number.parseInt(String(value ?? ''), 10);
+      if (!Number.isInteger(parsed)) return fallback;
+      if (parsed < min || parsed > max) return fallback;
+      return parsed;
+    };
+
+    const normalizeAsset = raw => {
+      if (!raw || typeof raw !== 'object') return null;
+      const id = Number(raw.id || 0);
+      if (!Number.isInteger(id) || id <= 0) return null;
+      const storagePath = String(raw.storage_path || raw.path || '').trim();
+      if (!storagePath.startsWith('/static/uploads/')) return null;
+      const mediaType = String(raw.media_type || '').trim().toLowerCase() === 'video' ? 'video' : 'image';
+      return {
+        id,
+        label: String(raw.label || '').trim(),
+        storage_path: storagePath,
+        media_type: mediaType,
+        mime_type: String(raw.mime_type || '').trim(),
+        byte_size: Math.max(0, Number(raw.byte_size || 0) || 0),
+        alt_text: String(raw.alt_text || '').trim(),
+        width_px: Math.max(0, Number(raw.width_px || 0) || 0),
+        height_px: Math.max(0, Number(raw.height_px || 0) || 0),
+        usage_count: Math.max(0, Number(raw.usage_count || 0) || 0)
+      };
+    };
+
+    const guessKindForTarget = selector => {
+      if (!selector) return 'any';
+      const lowered = String(selector).toLowerCase();
+      if (lowered.includes('video')) return 'video';
+      if (lowered.includes('image') || lowered.includes('thumbnail') || lowered.includes('avatar')) return 'image';
+      return 'any';
+    };
+
+    const prettyBytes = bytes => {
+      const value = Math.max(0, Number(bytes || 0));
+      if (!Number.isFinite(value) || value <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB'];
+      let amount = value;
+      let index = 0;
+      while (amount >= 1024 && index < units.length - 1) {
+        amount /= 1024;
+        index += 1;
+      }
+      const precision = amount >= 10 || index === 0 ? 0 : 1;
+      return `${amount.toFixed(precision)} ${units[index]}`;
+    };
+
+    const setUploadStatus = (message, type = '') => {
+      if (!uploadStatusEl) return;
+      uploadStatusEl.textContent = message;
+      uploadStatusEl.classList.remove('text-success', 'text-danger');
+      if (type === 'success') uploadStatusEl.classList.add('text-success');
+      if (type === 'error') uploadStatusEl.classList.add('text-danger');
+    };
+
+    const setPickerStatus = (message, type = '') => {
+      if (!pickerStatusEl) return;
+      pickerStatusEl.textContent = message;
+      pickerStatusEl.classList.remove('text-success', 'text-danger');
+      if (type === 'success') pickerStatusEl.classList.add('text-success');
+      if (type === 'error') pickerStatusEl.classList.add('text-danger');
+    };
+
+    const syncQualityLabel = () => {
+      if (!imageQualityValueEl || !imageQualityEl) return;
+      const value = Math.max(40, Math.min(95, Number(imageQualityEl.value || 82) || 82));
+      imageQualityValueEl.textContent = `${value}%`;
+    };
+
+    const syncStats = () => {
+      if (!statTotalEl && !statImagesEl && !statVideosEl) return;
+      const total = state.assets.length;
+      const images = state.assets.filter(asset => asset.media_type === 'image').length;
+      const videos = state.assets.filter(asset => asset.media_type === 'video').length;
+      if (statTotalEl) statTotalEl.textContent = String(total);
+      if (statImagesEl) statImagesEl.textContent = String(images);
+      if (statVideosEl) statVideosEl.textContent = String(videos);
+    };
+
+    const cropAspectForMode = mode => {
+      if (mode === 'square') return 1;
+      if (mode === 'portrait') return 4 / 5;
+      if (mode === 'landscape') return 16 / 9;
+      return 0;
+    };
+
+    const computeCropRect = (width, height, mode) => {
+      const safeWidth = Math.max(1, Number(width || 1));
+      const safeHeight = Math.max(1, Number(height || 1));
+      const targetAspect = cropAspectForMode(mode);
+      if (!targetAspect) {
+        return { sx: 0, sy: 0, sw: safeWidth, sh: safeHeight };
+      }
+
+      const sourceAspect = safeWidth / safeHeight;
+      if (sourceAspect > targetAspect) {
+        const sw = Math.max(1, Math.round(safeHeight * targetAspect));
+        const sx = Math.max(0, Math.floor((safeWidth - sw) / 2));
+        return { sx, sy: 0, sw, sh: safeHeight };
+      }
+
+      const sh = Math.max(1, Math.round(safeWidth / targetAspect));
+      const sy = Math.max(0, Math.floor((safeHeight - sh) / 2));
+      return { sx: 0, sy, sw: safeWidth, sh };
+    };
+
+    const loadImageFromFile = file =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        const image = new Image();
+        reader.onerror = () => {
+          reject(new Error('Unable to load selected image'));
+        };
+        image.onload = () => {
+          resolve(image);
+        };
+        image.onerror = () => {
+          reject(new Error('Unable to load selected image'));
+        };
+        reader.onload = () => {
+          const result = typeof reader.result === 'string' ? reader.result : '';
+          if (!result) {
+            reject(new Error('Unable to load selected image'));
+            return;
+          }
+          image.src = result;
+        };
+        reader.readAsDataURL(file);
+      });
+
+    const buildProcessedCanvas = async (file, options = {}) => {
+      const image = await loadImageFromFile(file);
+      const sourceWidth = Math.max(1, Number(image.naturalWidth || image.width || 1));
+      const sourceHeight = Math.max(1, Number(image.naturalHeight || image.height || 1));
+
+      const mode = options.cropMode || 'none';
+      const crop = computeCropRect(sourceWidth, sourceHeight, mode);
+      const maxWidth = toPositiveInt(options.maxWidth, sourceWidth, 1, 4000);
+      const scale = Math.min(1, maxWidth / crop.sw);
+      const outputWidth = Math.max(1, Math.round(crop.sw * scale));
+      const outputHeight = Math.max(1, Math.round(crop.sh * scale));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas is not available in this browser');
+      ctx.drawImage(image, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, outputWidth, outputHeight);
+      return {
+        canvas,
+        sourceWidth,
+        sourceHeight,
+        outputWidth,
+        outputHeight
+      };
+    };
+
+    const canvasToBlob = (canvas, mimeType, quality) =>
+      new Promise((resolve, reject) => {
+        canvas.toBlob(
+          blob => {
+            if (!blob) {
+              reject(new Error('Unable to encode optimized image'));
+              return;
+            }
+            resolve(blob);
+          },
+          mimeType,
+          quality
+        );
+      });
+
+    const copyText = async text => {
+      const value = String(text || '').trim();
+      if (!value) throw new Error('Nothing to copy');
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+        return;
+      }
+      const temp = document.createElement('textarea');
+      temp.value = value;
+      temp.setAttribute('readonly', 'readonly');
+      temp.style.position = 'fixed';
+      temp.style.top = '-9999px';
+      document.body.appendChild(temp);
+      temp.focus();
+      temp.select();
+      const ok = document.execCommand('copy');
+      temp.remove();
+      if (!ok) throw new Error('Clipboard copy failed');
+    };
+
+    const setImageToolsVisibility = file => {
+      const isImage = Boolean(file && String(file.type || '').startsWith('image/'));
+      if (imageToolsEl) imageToolsEl.hidden = !isImage;
+      if (!isImage && imagePreviewMetaEl) {
+        imagePreviewMetaEl.textContent = 'Preview updates with crop/quality controls.';
+      }
+    };
+
+    const currentImageOptions = () => ({
+      optimize: imageOptimizeEl?.checked === true,
+      cropMode: String(imageCropModeEl?.value || 'none'),
+      quality: Math.max(0.4, Math.min(0.95, (Number(imageQualityEl?.value || 82) || 82) / 100)),
+      maxWidth: Math.max(320, Math.min(4000, Number(imageMaxWidthEl?.value || 1920) || 1920))
+    });
+
+    const refreshImagePreview = async () => {
+      const file = uploadFileEl?.files?.[0];
+      if (!file || !imagePreviewCanvasEl) return;
+      if (!String(file.type || '').startsWith('image/')) return;
+
+      if (String(file.type).toLowerCase() === 'image/gif') {
+        if (imagePreviewMetaEl) imagePreviewMetaEl.textContent = 'GIF detected. Original file will be uploaded to preserve animation.';
+        return;
+      }
+
+      try {
+        const options = currentImageOptions();
+        const effectiveOptions = options.optimize ? options : { ...options, cropMode: 'none', maxWidth: 4000 };
+        const processed = await buildProcessedCanvas(file, effectiveOptions);
+        imagePreviewCanvasEl.width = processed.outputWidth;
+        imagePreviewCanvasEl.height = processed.outputHeight;
+        const previewCtx = imagePreviewCanvasEl.getContext('2d');
+        if (!previewCtx) return;
+        previewCtx.clearRect(0, 0, processed.outputWidth, processed.outputHeight);
+        previewCtx.drawImage(processed.canvas, 0, 0);
+
+        if (imagePreviewMetaEl) {
+          imagePreviewMetaEl.textContent = `Original ${processed.sourceWidth}x${processed.sourceHeight} -> Upload ${processed.outputWidth}x${processed.outputHeight}`;
+        }
+      } catch (error) {
+        if (imagePreviewMetaEl) {
+          imagePreviewMetaEl.textContent = error.message || 'Unable to generate preview';
+        }
+      }
+    };
+
+    const defaultAssetLabelForFile = file => {
+      const name = String(file?.name || '').replace(/\.[^.]+$/, '');
+      const cleaned = name.replace(/[_-]+/g, ' ').trim();
+      return cleaned || '';
+    };
+
+    const imageMimeForOutput = mimeType => {
+      const normalized = String(mimeType || '').toLowerCase();
+      if (normalized === 'image/png') return 'image/png';
+      if (normalized === 'image/webp') return 'image/webp';
+      return 'image/jpeg';
+    };
+
+    const makeOptimizedImageFile = async file => {
+      const options = currentImageOptions();
+      const processed = await buildProcessedCanvas(file, options);
+      const outputType = imageMimeForOutput(file.type);
+      const outputBlob = await canvasToBlob(processed.canvas, outputType, options.quality);
+      const outputExt = outputType === 'image/png' ? 'png' : outputType === 'image/webp' ? 'webp' : 'jpg';
+      const outputNameBase = String(file.name || 'image').replace(/\.[^.]+$/, '').slice(0, 80) || 'image';
+      const outputFile = new File([outputBlob], `${outputNameBase}.${outputExt}`, { type: outputType, lastModified: Date.now() });
+      return {
+        file: outputFile,
+        width: processed.outputWidth,
+        height: processed.outputHeight
+      };
+    };
+
+    const applyAssetState = assets => {
+      state.assets = assets
+        .map(normalizeAsset)
+        .filter(Boolean)
+        .sort((a, b) => b.id - a.id);
+      syncStats();
+    };
+
+    const readAssetFromCard = card => {
+      if (!card) return null;
+      return normalizeAsset({
+        id: card.dataset.id,
+        storage_path: card.dataset.path,
+        media_type: card.dataset.mediaType,
+        mime_type: card.dataset.mimeType,
+        byte_size: card.dataset.byteSize,
+        width_px: card.dataset.width,
+        height_px: card.dataset.height,
+        label: card.dataset.label,
+        alt_text: card.dataset.altText,
+        usage_count: card.dataset.usageCount
+      });
+    };
+
+    const setAssetDatasets = (node, asset) => {
+      node.dataset.id = String(asset.id);
+      node.dataset.path = asset.storage_path;
+      node.dataset.mediaType = asset.media_type;
+      node.dataset.mimeType = asset.mime_type || '';
+      node.dataset.byteSize = String(asset.byte_size || 0);
+      node.dataset.width = String(asset.width_px || 0);
+      node.dataset.height = String(asset.height_px || 0);
+      node.dataset.label = asset.label || '';
+      node.dataset.altText = asset.alt_text || '';
+      node.dataset.usageCount = String(asset.usage_count || 0);
+    };
+
+    const buildLibraryAssetCard = asset => {
+      const article = document.createElement('article');
+      article.className = 'asset-card';
+      setAssetDatasets(article, asset);
+
+      const previewShell = document.createElement('div');
+      previewShell.className = 'asset-preview-shell';
+      if (asset.media_type === 'video') {
+        const video = document.createElement('video');
+        video.className = 'asset-preview-media';
+        video.src = asset.storage_path;
+        video.controls = true;
+        video.muted = true;
+        video.preload = 'metadata';
+        previewShell.appendChild(video);
+      } else {
+        const image = document.createElement('img');
+        image.className = 'asset-preview-media';
+        image.src = asset.storage_path;
+        image.alt = asset.alt_text || '';
+        image.loading = 'lazy';
+        previewShell.appendChild(image);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'asset-card-meta';
+
+      const top = document.createElement('div');
+      top.className = 'asset-card-meta-top';
+
+      const labelInput = document.createElement('input');
+      labelInput.className = 'asset-card-label-input';
+      labelInput.type = 'text';
+      labelInput.value = asset.label || '';
+      labelInput.placeholder = 'Label';
+      top.appendChild(labelInput);
+
+      const mediaPill = document.createElement('span');
+      mediaPill.className = 'link-pill link-pill-asset-type';
+      mediaPill.textContent = asset.media_type;
+      top.appendChild(mediaPill);
+
+      const usagePill = document.createElement('span');
+      usagePill.className = 'link-pill link-pill-asset-usage';
+      usagePill.textContent = `In use: ${Number(asset.usage_count || 0)}`;
+      usagePill.hidden = Number(asset.usage_count || 0) <= 0;
+      top.appendChild(usagePill);
+      meta.appendChild(top);
+
+      const altInput = document.createElement('input');
+      altInput.className = 'asset-card-alt-input';
+      altInput.type = 'text';
+      altInput.value = asset.alt_text || '';
+      altInput.placeholder = 'Alt text (image assets)';
+      meta.appendChild(altInput);
+
+      const pathEl = document.createElement('div');
+      pathEl.className = 'asset-card-path';
+      pathEl.title = asset.storage_path;
+      pathEl.textContent = asset.storage_path;
+      meta.appendChild(pathEl);
+
+      const facts = document.createElement('div');
+      facts.className = 'asset-card-facts';
+      const sizeFact = document.createElement('span');
+      sizeFact.textContent = prettyBytes(asset.byte_size);
+      facts.appendChild(sizeFact);
+      const dimFact = document.createElement('span');
+      dimFact.textContent =
+        Number(asset.width_px || 0) > 0 && Number(asset.height_px || 0) > 0 ? `${asset.width_px}x${asset.height_px}` : 'dimension unknown';
+      facts.appendChild(dimFact);
+      meta.appendChild(facts);
+
+      const actions = document.createElement('div');
+      actions.className = 'asset-card-actions';
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'icon-action';
+      copyBtn.dataset.action = 'copy-url';
+      copyBtn.textContent = 'Copy URL';
+      actions.appendChild(copyBtn);
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'icon-action';
+      saveBtn.dataset.action = 'save-meta';
+      saveBtn.textContent = 'Save';
+      actions.appendChild(saveBtn);
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'icon-action danger';
+      delBtn.dataset.action = 'delete-asset';
+      delBtn.textContent = 'Delete';
+      actions.appendChild(delBtn);
+      meta.appendChild(actions);
+
+      article.appendChild(previewShell);
+      article.appendChild(meta);
+      return article;
+    };
+
+    const buildPickerAssetCard = asset => {
+      const article = document.createElement('article');
+      article.className = 'asset-picker-card';
+      setAssetDatasets(article, asset);
+
+      const previewShell = document.createElement('div');
+      previewShell.className = 'asset-preview-shell';
+      if (asset.media_type === 'video') {
+        const video = document.createElement('video');
+        video.className = 'asset-preview-media';
+        video.src = asset.storage_path;
+        video.preload = 'metadata';
+        video.muted = true;
+        video.controls = true;
+        previewShell.appendChild(video);
+      } else {
+        const image = document.createElement('img');
+        image.className = 'asset-preview-media';
+        image.src = asset.storage_path;
+        image.alt = asset.alt_text || '';
+        image.loading = 'lazy';
+        previewShell.appendChild(image);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'asset-picker-meta';
+      const label = document.createElement('div');
+      label.className = 'link-admin-title';
+      label.textContent = asset.label || asset.storage_path;
+      meta.appendChild(label);
+      const pathEl = document.createElement('div');
+      pathEl.className = 'asset-card-path';
+      pathEl.textContent = asset.storage_path;
+      pathEl.title = asset.storage_path;
+      meta.appendChild(pathEl);
+      const facts = document.createElement('div');
+      facts.className = 'asset-card-facts';
+      const media = document.createElement('span');
+      media.textContent = asset.media_type;
+      facts.appendChild(media);
+      const size = document.createElement('span');
+      size.textContent = prettyBytes(asset.byte_size);
+      facts.appendChild(size);
+      meta.appendChild(facts);
+      const actionRow = document.createElement('div');
+      actionRow.className = 'asset-card-actions';
+      const useBtn = document.createElement('button');
+      useBtn.type = 'button';
+      useBtn.className = 'icon-action';
+      useBtn.dataset.action = 'use-asset';
+      useBtn.textContent = 'Use Asset';
+      actionRow.appendChild(useBtn);
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'icon-action';
+      copyBtn.dataset.action = 'copy-url';
+      copyBtn.textContent = 'Copy URL';
+      actionRow.appendChild(copyBtn);
+      meta.appendChild(actionRow);
+
+      article.appendChild(previewShell);
+      article.appendChild(meta);
+      return article;
+    };
+
+    const matchesAssetQuery = (asset, queryText) => {
+      const query = String(queryText || '').trim().toLowerCase();
+      if (!query) return true;
+      const haystack = `${asset.label} ${asset.alt_text} ${asset.storage_path}`.toLowerCase();
+      return haystack.includes(query);
+    };
+
+    const matchesKind = (asset, kind) => {
+      const normalized = String(kind || 'any').trim().toLowerCase();
+      if (normalized === 'any') return true;
+      return asset.media_type === normalized;
+    };
+
+    const renderLibrary = () => {
+      const query = String(librarySearchEl?.value || '').trim();
+      const filtered = state.assets.filter(asset => matchesAssetQuery(asset, query));
+      libraryGridEl.innerHTML = '';
+      if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'asset-library-empty';
+        empty.textContent = libraryGridEl.dataset.emptyText || 'No assets found.';
+        libraryGridEl.appendChild(empty);
+        return;
+      }
+
+      filtered.forEach(asset => {
+        libraryGridEl.appendChild(buildLibraryAssetCard(asset));
+      });
+    };
+
+    const renderPicker = () => {
+      const targetKind = state.pickerTarget?.kind || 'any';
+      const kindFilter = String(pickerKindEl?.value || targetKind).trim().toLowerCase() || 'any';
+      const query = String(pickerSearchEl?.value || '').trim();
+      const filtered = state.assets.filter(asset => matchesKind(asset, kindFilter) && matchesAssetQuery(asset, query));
+      pickerGridEl.innerHTML = '';
+      if (!filtered.length) {
+        const empty = document.createElement('div');
+        empty.className = 'asset-library-empty';
+        empty.textContent = 'No matching assets.';
+        pickerGridEl.appendChild(empty);
+        return;
+      }
+      filtered.forEach(asset => {
+        pickerGridEl.appendChild(buildPickerAssetCard(asset));
+      });
+    };
+
+    const upsertAsset = assetRaw => {
+      const asset = normalizeAsset(assetRaw);
+      if (!asset) return;
+      const index = state.assets.findIndex(item => item.id === asset.id);
+      if (index >= 0) state.assets[index] = asset;
+      else state.assets.push(asset);
+      state.assets.sort((a, b) => b.id - a.id);
+      syncStats();
+    };
+
+    const removeAsset = id => {
+      const parsed = Number(id || 0);
+      if (!Number.isInteger(parsed) || parsed <= 0) return;
+      state.assets = state.assets.filter(asset => asset.id !== parsed);
+      syncStats();
+    };
+
+    const refreshAssets = async (showMessage = false) => {
+      const response = await fetch('/admin/assets', {
+        headers: {
+          Accept: 'application/json',
+          'X-Requested-With': 'fetch'
+        }
+      });
+      const payload = await parseResponse(response);
+      const assets = Array.isArray(payload.assets) ? payload.assets : [];
+      applyAssetState(assets);
+      renderLibrary();
+      renderPicker();
+      if (showMessage) showToast('Asset library refreshed');
+    };
+
+    const openPickerForButton = button => {
+      const targetSelector = String(button?.dataset?.assetTarget || '').trim();
+      const input = targetSelector ? $(targetSelector) : null;
+      if (!input) {
+        showToast('Target input for asset picker was not found', 'error');
+        return;
+      }
+
+      const altTargetSelector = String(button?.dataset?.assetAltTarget || '').trim();
+      const altInput = altTargetSelector ? $(altTargetSelector) : null;
+      const expectedKind = String(button?.dataset?.assetKind || '').trim().toLowerCase() || guessKindForTarget(targetSelector);
+      state.pickerTarget = {
+        input,
+        altInput,
+        kind: ['image', 'video'].includes(expectedKind) ? expectedKind : 'any'
+      };
+
+      if (pickerTitleEl) pickerTitleEl.textContent = `Select Asset for ${input.name || input.id || 'field'}`;
+      if (pickerKindEl) pickerKindEl.value = state.pickerTarget.kind || 'any';
+      if (pickerSearchEl) pickerSearchEl.value = '';
+      setPickerStatus('Pick an asset to insert its URL into the selected field.');
+      renderPicker();
+      modal.open('assetPicker');
+    };
+
+    const readInitialAssetsFromDom = () => {
+      const cards = $$('.asset-card', libraryGridEl);
+      const assets = cards.map(readAssetFromCard).filter(Boolean);
+      applyAssetState(assets);
+      renderLibrary();
+    };
+
+    uploadFileEl?.addEventListener('change', () => {
+      const file = uploadFileEl.files?.[0] || null;
+      setImageToolsVisibility(file);
+      if (file && uploadLabelEl && !String(uploadLabelEl.value || '').trim()) {
+        uploadLabelEl.value = defaultAssetLabelForFile(file);
+      }
+      if (file && uploadAltTextEl && !String(uploadAltTextEl.value || '').trim() && String(file.type || '').startsWith('image/')) {
+        uploadAltTextEl.value = defaultAssetLabelForFile(file);
+      }
+      void refreshImagePreview();
+    });
+
+    [imageOptimizeEl, imageCropModeEl, imageQualityEl, imageMaxWidthEl].forEach(control => {
+      control?.addEventListener('input', () => {
+        syncQualityLabel();
+        void refreshImagePreview();
+      });
+      control?.addEventListener('change', () => {
+        syncQualityLabel();
+        void refreshImagePreview();
+      });
+    });
+
+    uploadForm.addEventListener('submit', async event => {
+      event.preventDefault();
+      const file = uploadFileEl?.files?.[0];
+      if (!file) {
+        setUploadStatus('Please choose an image or video file first.', 'error');
+        return;
+      }
+
+      if (uploadSubmitEl) {
+        uploadSubmitEl.disabled = true;
+        uploadSubmitEl.textContent = 'Uploading...';
+      }
+
+      const formData = new FormData(uploadForm);
+      if (csrfToken && !formData.has('_csrf')) formData.set('_csrf', csrfToken);
+
+      try {
+        const isImage = String(file.type || '').startsWith('image/');
+        const canOptimize = isImage && imageOptimizeEl?.checked === true && !/image\/gif/i.test(file.type || '');
+        if (canOptimize) {
+          const optimized = await makeOptimizedImageFile(file);
+          formData.set('asset_file', optimized.file, optimized.file.name);
+          formData.set('width_px', String(optimized.width));
+          formData.set('height_px', String(optimized.height));
+        }
+
+        const result = await postFormData('/admin/asset/upload', formData);
+        if (!result.asset) throw new Error('Uploaded asset was not returned by the server');
+        upsertAsset(result.asset);
+        renderLibrary();
+        renderPicker();
+        uploadForm.reset();
+        setImageToolsVisibility(null);
+        setUploadStatus(result.message || 'Asset uploaded', 'success');
+        showToast(result.message || 'Asset uploaded');
+        if (imagePreviewMetaEl) imagePreviewMetaEl.textContent = 'Preview updates with crop/quality controls.';
+      } catch (error) {
+        setUploadStatus(error.message || 'Failed to upload asset', 'error');
+        showToast(error.message || 'Failed to upload asset', 'error');
+      } finally {
+        if (uploadSubmitEl) {
+          uploadSubmitEl.disabled = false;
+          uploadSubmitEl.textContent = 'Upload Asset';
+        }
+      }
+    });
+
+    librarySearchEl?.addEventListener('input', renderLibrary);
+    libraryRefreshBtnEl?.addEventListener('click', () => {
+      void refreshAssets(true).catch(error => {
+        showToast(error.message || 'Unable to refresh assets', 'error');
+      });
+    });
+
+    libraryGridEl.addEventListener('click', async event => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+      const action = String(button.dataset.action || '').trim();
+      const card = button.closest('.asset-card');
+      if (!card) return;
+      const id = Number(card.dataset.id || 0);
+      const asset = state.assets.find(item => item.id === id);
+      if (!asset) return;
+
+      try {
+        if (action === 'copy-url') {
+          await copyText(new URL(asset.storage_path, window.location.origin).toString());
+          showToast('Asset URL copied');
+          return;
+        }
+
+        if (action === 'save-meta') {
+          const labelValue = $('.asset-card-label-input', card)?.value || '';
+          const altValue = $('.asset-card-alt-input', card)?.value || '';
+          const result = await postUrlEncoded('/admin/asset/update', {
+            _csrf: csrfToken,
+            id,
+            label: labelValue,
+            alt_text: altValue
+          });
+          if (result.asset) {
+            upsertAsset(result.asset);
+            renderLibrary();
+            renderPicker();
+          }
+          showToast(result.message || 'Asset updated');
+          return;
+        }
+
+        if (action === 'delete-asset') {
+          if (!window.confirm('Delete this asset? This cannot be undone.')) return;
+          const result = await postUrlEncoded('/admin/asset/delete', { _csrf: csrfToken, id });
+          removeAsset(id);
+          renderLibrary();
+          renderPicker();
+          showToast(result.message || 'Asset deleted');
+        }
+      } catch (error) {
+        showToast(error.message || 'Failed to update asset', 'error');
+      }
+    });
+
+    document.addEventListener('click', event => {
+      const button = event.target.closest('.asset-target-btn');
+      if (!button) return;
+      event.preventDefault();
+      event.stopPropagation();
+      openPickerForButton(button);
+    });
+
+    pickerSearchEl?.addEventListener('input', renderPicker);
+    pickerKindEl?.addEventListener('change', renderPicker);
+
+    pickerGridEl.addEventListener('click', async event => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+      const action = String(button.dataset.action || '').trim();
+      const card = button.closest('.asset-picker-card');
+      if (!card) return;
+      const id = Number(card.dataset.id || 0);
+      const asset = state.assets.find(item => item.id === id);
+      if (!asset) return;
+
+      try {
+        if (action === 'copy-url') {
+          await copyText(new URL(asset.storage_path, window.location.origin).toString());
+          setPickerStatus('Asset URL copied', 'success');
+          showToast('Asset URL copied');
+          return;
+        }
+
+        if (action === 'use-asset') {
+          if (!state.pickerTarget?.input) {
+            setPickerStatus('Target field is no longer available.', 'error');
+            return;
+          }
+          if (state.pickerTarget.kind !== 'any' && asset.media_type !== state.pickerTarget.kind) {
+            setPickerStatus(`This field expects a ${state.pickerTarget.kind} asset.`, 'error');
+            return;
+          }
+
+          state.pickerTarget.input.value = asset.storage_path;
+          state.pickerTarget.input.dispatchEvent(new Event('input', { bubbles: true }));
+          state.pickerTarget.input.dispatchEvent(new Event('change', { bubbles: true }));
+          if (state.pickerTarget.altInput && !String(state.pickerTarget.altInput.value || '').trim() && String(asset.alt_text || '').trim()) {
+            state.pickerTarget.altInput.value = asset.alt_text;
+            state.pickerTarget.altInput.dispatchEvent(new Event('input', { bubbles: true }));
+            state.pickerTarget.altInput.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          modal.close();
+          showToast('Asset inserted');
+        }
+      } catch (error) {
+        setPickerStatus(error.message || 'Unable to use asset', 'error');
+      }
+    });
+
+    readInitialAssetsFromDom();
+    syncQualityLabel();
+    setUploadStatus('Upload once and reuse URLs across image/video fields, especially block images.');
+    return {
+      refresh: refreshAssets
     };
   }
 
@@ -2601,6 +3413,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const modal = createModalController();
   const utmBuilder = setupUtmBuilder(modal);
   const qrBuilder = setupQrBuilder(modal);
+  const assetManager = setupAssetManager(modal);
   setupSummaryButtons();
   setupSettingsTabs();
   setupThemeColorPreview();
@@ -2610,4 +3423,5 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLinksManager(modal, utmBuilder, qrBuilder);
   setupBlocksManager(modal, qrBuilder);
   setupRedirectsManager(modal, utmBuilder, qrBuilder);
+  void assetManager.refresh().catch(() => {});
 });

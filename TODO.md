@@ -41,10 +41,10 @@
   - [x] Pin to top option
   - [x] If pinned, visually pull the featured link out of the cluster and place it above the page/cluster
 
-- [ ] **Asset manager**
-  - [ ] Upload library (reuse images/videos across blocks)
-  - [ ] Image compression + basic crop tool (optional)
-  - [ ] Alt text support
+- [x] **Asset manager**
+  - [x] Upload library (reuse images/videos across blocks)
+  - [x] Image compression + basic crop tool (optional)
+  - [x] Alt text support
 
 ---
 
@@ -78,3 +78,8 @@
   - [x] Basic anti-spam / throttling for likes + view counting
 
 ---
+
+## Quick Fixes
+
+- [] **Media Libary Input**
+  - [] Allow image blocks to be set to an item in the library. Have POC, need to properly implement to use URL of image/auto-set file path.

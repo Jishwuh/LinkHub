@@ -13,6 +13,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Per-link and per-redirect analytics (clicks, CTR, referrers, device, geo, hour, UTM)
 - QR code generator in admin (profile, links, blocks, redirects)
 - Auto link enrichment in admin (URL -> suggested title, icon, preview image)
+- Asset manager with reusable media library (images/videos), alt text metadata, and in-form picker buttons
 - Visit and like counters
 - Open Graph / social share metadata editor
 - Private content controls (password gates, 18+ verification, spoiler reveal)
@@ -48,6 +49,12 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Profile-level QR button in Links panel
   - Per-row QR buttons on Links, URL-capable Blocks, and Redirects
   - In-modal QR preview with PNG download + URL copy
+- Asset manager:
+  - Dedicated `Asset Manager` accordion in admin with reusable upload library
+  - In-form `Library` picker buttons for background/OG URLs, redirect OG image, featured thumbnail, and block image URL
+  - Client-side image optimization options during upload: center crop presets + resize + quality compression
+  - Alt text metadata per asset, with automatic block-image alt fallback when empty
+  - Safe delete behavior: prevents deleting assets still referenced by settings/blocks/links/redirects
 - Full analytics upgrade:
   - Outbound tracking route for regular links (`/out/:id`)
   - Redirect analytics for all short links (`/:slug`)
@@ -114,6 +121,18 @@ Everything below is configurable from **Admin -> Site Settings**.
   - `pill`
   - `square`
   - `glass`
+
+### Asset manager
+
+- Upload images and videos once, then reuse them with URL insertion buttons
+- Searchable library cards with preview, copy URL, edit label/alt text, and delete actions
+- Optional image optimization:
+  - Crop presets: `none`, `square`, `portrait (4:5)`, `landscape (16:9)`
+  - Max width resizing
+  - JPEG/WebP quality slider
+- Alt text support:
+  - Store alt text directly on image assets
+  - Block image saves can auto-fill alt text from the selected library asset when left blank
 
 ## Private Content
 
@@ -292,6 +311,7 @@ npm start
 - File uploads are restricted by field:
   - Avatar / OG: PNG, JPG, WEBP, GIF
   - Background media: PNG, JPG, WEBP, GIF, MP4, WEBM, OGG
+  - Asset library: PNG, JPG, WEBP, GIF, MP4, WEBM, OGG
 - Rich text is sanitized before storage.
 - Embeds are hardened with strict server-side sanitization:
   - Only `iframe` embeds are allowed
@@ -307,6 +327,7 @@ npm start
 - Likes endpoint is throttled (`LIKE_RATE_LIMIT_*`) to reduce spam clicks.
 - Profile visit counting is deduped per visitor hash over a configurable window (`VIEW_COUNT_THROTTLE_SECONDS`) with retention cleanup (`VIEW_COUNT_RETENTION_DAYS`).
 - Access passwords are stored as bcrypt hashes (never plaintext), with minimum length enforcement.
+- Asset deletion is blocked while that asset is still referenced by settings, links, blocks, or redirects.
 - Age verification is intentionally short-lived and route-scoped (refresh requires re-verification, per current UX).
 
 ## Quality Checks

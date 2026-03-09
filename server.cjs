@@ -49,6 +49,7 @@ const MEDIA_UPLOAD_MIME_EXT = {
   'video/webm': 'webm',
   'video/ogg': 'ogg'
 };
+const ASSET_MEDIA_TYPES = ['image', 'video'];
 const ALLOWED_BACKGROUND_MODES = ['youtube', 'image', 'video', 'gradient', 'particles'];
 const ALLOWED_LINK_LAYOUTS = ['list', 'grid', 'compact', 'table'];
 const ALLOWED_FONT_THEMES = ['modern', 'editorial', 'rounded', 'mono'];
@@ -515,6 +516,13 @@ function normalizeMediaAsset(value) {
   return normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
 }
 
+function mediaTypeFromMime(value) {
+  const raw = String(value || '').toLowerCase();
+  if (raw.startsWith('video/')) return 'video';
+  if (raw.startsWith('image/')) return 'image';
+  return '';
+}
+
 function buildAbsoluteAssetUrl(value, siteUrl) {
   const direct = normalizeHttpUrl(value);
   if (direct) return direct;
@@ -536,6 +544,14 @@ function isSocialPreviewUserAgent(userAgentValue) {
 function mediaLooksLikeVideo(value) {
   const raw = String(value || '').toLowerCase();
   return /\.(mp4|webm|ogg)(\?|#|$)/.test(raw);
+}
+
+function sanitizeAssetLabel(value) {
+  return sanitizeText(String(value || '').replace(/\s+/g, ' '), 255);
+}
+
+function sanitizeAssetAltText(value) {
+  return sanitizeText(String(value || '').replace(/\s+/g, ' '), 255);
 }
 
 function sanitizeRichText(value) {
@@ -911,8 +927,9 @@ function createApp(passedConfig) {
       const ext = MEDIA_UPLOAD_MIME_EXT[file.mimetype] || 'bin';
       const isOG = file.fieldname === 'og_image_file';
       const isBackground = file.fieldname === 'background_media_file';
+      const isAsset = file.fieldname === 'asset_file';
       const random = crypto.randomBytes(12).toString('hex');
-      const prefix = isBackground ? 'bg' : isOG ? 'og' : 'avatar';
+      const prefix = isAsset ? 'asset' : isBackground ? 'bg' : isOG ? 'og' : 'avatar';
       cb(null, `${prefix}-${Date.now()}-${random}.${ext}`);
     }
   });
@@ -920,9 +937,13 @@ function createApp(passedConfig) {
     storage,
     limits: { fileSize: 25 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-      if (file.fieldname === 'background_media_file') {
+      if (file.fieldname === 'background_media_file' || file.fieldname === 'asset_file') {
         const ok = Object.prototype.hasOwnProperty.call(MEDIA_UPLOAD_MIME_EXT, file.mimetype);
-        cb(ok ? null : new Error('Background upload must be image/video (PNG/JPG/WEBP/GIF/MP4/WEBM/OGG)'), ok);
+        const errorMessage =
+          file.fieldname === 'asset_file'
+            ? 'Asset upload must be image/video (PNG/JPG/WEBP/GIF/MP4/WEBM/OGG)'
+            : 'Background upload must be image/video (PNG/JPG/WEBP/GIF/MP4/WEBM/OGG)';
+        cb(ok ? null : new Error(errorMessage), ok);
         return;
       }
 
@@ -935,6 +956,13 @@ function createApp(passedConfig) {
     { name: 'og_image_file', maxCount: 1 },
     { name: 'background_media_file', maxCount: 1 }
   ]);
+  const uploadAssetFile = upload.single('asset_file');
+  const uploadAssetMiddleware = (req, res, next) => {
+    uploadAssetFile(req, res, err => {
+      if (!err) return next();
+      return res.status(400).send(String(err.message || 'Asset upload failed'));
+    });
+  };
 
   function requireAuth(req, res, next) {
     if (req.session.userId) return next();
@@ -946,6 +974,9 @@ function createApp(passedConfig) {
   async function deleteUploadIfLocal(relUrl) {
     const localPath = normalizeLocalAssetPath(relUrl);
     if (!localPath) return;
+
+    const linkedAsset = await get('SELECT id FROM assets WHERE storage_path = ? LIMIT 1', [localPath]).catch(() => null);
+    if (linkedAsset?.id) return;
 
     const filePath = path.join(__dirname, 'public', localPath.replace(/^\/static\//, ''));
     const rel = path.relative(uploadsDir, filePath);
@@ -1017,6 +1048,31 @@ function createApp(passedConfig) {
       const nonUnique = (anySlugIdx || []).find(i => i.Non_unique === 1);
       if (nonUnique) await run(`ALTER TABLE redirects DROP INDEX \`${nonUnique.Key_name}\``);
       await run('ALTER TABLE redirects ADD UNIQUE KEY uq_redirects_slug (slug)');
+    }
+  }
+
+  async function ensureAssetsSchema() {
+    await ensureTableColumns('assets', [
+      ['label', "label VARCHAR(255) NOT NULL DEFAULT '' AFTER id"],
+      ['storage_path', 'storage_path VARCHAR(255) NOT NULL UNIQUE AFTER label'],
+      ['media_type', "media_type ENUM('image', 'video') NOT NULL DEFAULT 'image' AFTER storage_path"],
+      ['mime_type', "mime_type VARCHAR(120) NOT NULL DEFAULT '' AFTER media_type"],
+      ['byte_size', 'byte_size INT UNSIGNED NOT NULL DEFAULT 0 AFTER mime_type'],
+      ['alt_text', "alt_text VARCHAR(255) NOT NULL DEFAULT '' AFTER byte_size"],
+      ['width_px', 'width_px INT UNSIGNED NOT NULL DEFAULT 0 AFTER alt_text'],
+      ['height_px', 'height_px INT UNSIGNED NOT NULL DEFAULT 0 AFTER width_px'],
+      ['created_at', 'created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP AFTER height_px'],
+      ['updated_at', 'updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at']
+    ]);
+
+    const mediaTypeIdx = await q('SHOW INDEX FROM assets WHERE Key_name = "idx_assets_media_type"').catch(() => []);
+    if (!Array.isArray(mediaTypeIdx) || mediaTypeIdx.length === 0) {
+      await run('ALTER TABLE assets ADD INDEX idx_assets_media_type (media_type)').catch(() => {});
+    }
+
+    const createdAtIdx = await q('SHOW INDEX FROM assets WHERE Key_name = "idx_assets_created_at"').catch(() => []);
+    if (!Array.isArray(createdAtIdx) || createdAtIdx.length === 0) {
+      await run('ALTER TABLE assets ADD INDEX idx_assets_created_at (created_at)').catch(() => {});
     }
   }
 
@@ -1252,6 +1308,108 @@ function createApp(passedConfig) {
       age_locked: ageLocked,
       is_spoiler: parseBoolean(row?.is_spoiler, false) ? 1 : 0
     };
+  }
+
+  function sanitizeAssetForAdmin(row, usageCount = 0) {
+    if (!row) return null;
+    const storagePath = normalizeLocalAssetPath(row.storage_path || '');
+    if (!storagePath) return null;
+    const mediaTypeGuess = mediaLooksLikeVideo(storagePath) ? 'video' : 'image';
+    const mediaType = sanitizeChoice(row.media_type, ASSET_MEDIA_TYPES, mediaTypeGuess);
+    return {
+      id: Number(row.id || 0),
+      label: sanitizeAssetLabel(row.label || ''),
+      storage_path: storagePath,
+      media_type: mediaType,
+      mime_type: sanitizeText(row.mime_type || '', 120),
+      byte_size: Math.max(0, Number(row.byte_size || 0) || 0),
+      alt_text: sanitizeAssetAltText(row.alt_text || ''),
+      width_px: Math.max(0, Number(row.width_px || 0) || 0),
+      height_px: Math.max(0, Number(row.height_px || 0) || 0),
+      usage_count: Math.max(0, Number(usageCount || 0) || 0),
+      created_at: row.created_at || null
+    };
+  }
+
+  async function getAssetUsageCountsByPath() {
+    const usage = new Map();
+    const bump = value => {
+      const pathValue = normalizeLocalAssetPath(value);
+      if (!pathValue) return;
+      usage.set(pathValue, (usage.get(pathValue) || 0) + 1);
+    };
+
+    const settingRows = await q("SELECT value FROM settings WHERE value LIKE '/static/uploads/%'").catch(() => []);
+    for (const row of settingRows) bump(row.value);
+
+    const linkRows = await q("SELECT featured_thumbnail_url FROM links WHERE featured_thumbnail_url LIKE '/static/uploads/%'").catch(() => []);
+    for (const row of linkRows) bump(row.featured_thumbnail_url);
+
+    const redirectRows = await q("SELECT og_image FROM redirects WHERE og_image LIKE '/static/uploads/%'").catch(() => []);
+    for (const row of redirectRows) bump(row.og_image);
+
+    const imageBlockRows = await q(
+      "SELECT JSON_UNQUOTE(JSON_EXTRACT(data, '$.src')) AS src FROM blocks WHERE type = 'image'"
+    ).catch(() => []);
+    for (const row of imageBlockRows) bump(row.src);
+
+    return usage;
+  }
+
+  async function getAssetUsageCount(pathValue) {
+    const normalizedPath = normalizeLocalAssetPath(pathValue);
+    if (!normalizedPath) return 0;
+    const map = await getAssetUsageCountsByPath();
+    return Number(map.get(normalizedPath) || 0);
+  }
+
+  async function listAssetsForAdmin() {
+    const rows = await q('SELECT * FROM assets ORDER BY created_at DESC, id DESC').catch(() => []);
+    const usageMap = await getAssetUsageCountsByPath();
+    return rows
+      .map(row => sanitizeAssetForAdmin(row, usageMap.get(normalizeLocalAssetPath(row.storage_path || '')) || 0))
+      .filter(Boolean);
+  }
+
+  function deriveAssetLabelFromUpload(file, fallbackPrefix = 'Asset') {
+    const rawName = sanitizeAssetLabel(path.parse(String(file?.originalname || '')).name.replace(/[_-]+/g, ' '));
+    if (rawName) return rawName;
+    return `${fallbackPrefix} ${Date.now()}`;
+  }
+
+  async function upsertAssetFromUpload(file, options = {}) {
+    const storagePath = normalizeLocalAssetPath(`/static/uploads/${String(file?.filename || '').trim()}`);
+    if (!storagePath) return null;
+    const mimeType = sanitizeText(file?.mimetype || '', 120);
+    const mediaType = sanitizeChoice(mediaTypeFromMime(mimeType), ASSET_MEDIA_TYPES, mediaLooksLikeVideo(storagePath) ? 'video' : 'image');
+    const label = sanitizeAssetLabel(options.label || deriveAssetLabelFromUpload(file, mediaType === 'video' ? 'Video' : 'Image'));
+    const altText = mediaType === 'image' ? sanitizeAssetAltText(options.altText || '') : '';
+    const widthPx = parseIntegerInRange(options.widthPx, 0, 0, 10000);
+    const heightPx = parseIntegerInRange(options.heightPx, 0, 0, 10000);
+    const byteSize = Number.isFinite(Number(file?.size)) ? Math.max(0, Number(file.size)) : 0;
+
+    await run(
+      `
+        INSERT INTO assets (label, storage_path, media_type, mime_type, byte_size, alt_text, width_px, height_px)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          label = VALUES(label),
+          media_type = VALUES(media_type),
+          mime_type = VALUES(mime_type),
+          byte_size = VALUES(byte_size),
+          alt_text = CASE
+            WHEN COALESCE(alt_text, '') = '' THEN VALUES(alt_text)
+            ELSE alt_text
+          END,
+          width_px = CASE WHEN VALUES(width_px) > 0 THEN VALUES(width_px) ELSE width_px END,
+          height_px = CASE WHEN VALUES(height_px) > 0 THEN VALUES(height_px) ELSE height_px END
+      `,
+      [label, storagePath, mediaType, mimeType, byteSize, altText, widthPx, heightPx]
+    );
+
+    const row = await get('SELECT * FROM assets WHERE storage_path = ? LIMIT 1', [storagePath]);
+    const usageCount = await getAssetUsageCount(storagePath);
+    return sanitizeAssetForAdmin(row, usageCount);
   }
 
   function sanitizeLinkForAdmin(row) {
@@ -1818,10 +1976,28 @@ function createApp(passedConfig) {
         INDEX idx_blocks_visible (is_visible)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
+    await run(`
+      CREATE TABLE IF NOT EXISTS assets (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        label VARCHAR(255) NOT NULL DEFAULT '',
+        storage_path VARCHAR(255) NOT NULL UNIQUE,
+        media_type ENUM('image', 'video') NOT NULL DEFAULT 'image',
+        mime_type VARCHAR(120) NOT NULL DEFAULT '',
+        byte_size INT UNSIGNED NOT NULL DEFAULT 0,
+        alt_text VARCHAR(255) NOT NULL DEFAULT '',
+        width_px INT UNSIGNED NOT NULL DEFAULT 0,
+        height_px INT UNSIGNED NOT NULL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_assets_media_type (media_type),
+        INDEX idx_assets_created_at (created_at)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
 
     await ensureLinksSchema();
     await ensureBlocksSchema();
     await ensureRedirectsSchema();
+    await ensureAssetsSchema();
     await ensureClickEventsSchema();
     await ensureVisitThrottleSchema();
 
@@ -2259,6 +2435,7 @@ function createApp(passedConfig) {
       const blocks = blocksRaw.map(sanitizeBlockForAdmin).filter(Boolean);
       const redirectsRaw = await q('SELECT * FROM redirects ORDER BY slug ASC');
       const redirects = redirectsRaw.map(sanitizeRedirectForAdmin).filter(Boolean);
+      const assets = await listAssetsForAdmin();
       const analytics = await getAnalyticsSnapshot(analyticsDays);
 
       const socialsDir = path.join(__dirname, 'public', 'images', 'socials');
@@ -2278,10 +2455,89 @@ function createApp(passedConfig) {
         settings,
         csrfToken: req.session.csrfToken,
         redirects,
+        assets,
         icons,
         analytics,
         analyticsDays
       });
+    })
+  );
+
+  app.get(
+    '/admin/assets',
+    requireAuth,
+    asyncHandler(async (_req, res) => {
+      const assets = await listAssetsForAdmin();
+      return res.json({ ok: true, assets });
+    })
+  );
+
+  app.post(
+    '/admin/asset/upload',
+    requireAuth,
+    uploadAssetMiddleware,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const file = req.file;
+      if (!file?.filename) return res.status(400).send('Asset file is required');
+
+      const mediaType = sanitizeChoice(mediaTypeFromMime(file.mimetype), ASSET_MEDIA_TYPES, '');
+      if (!mediaType) return res.status(400).send('Uploaded file type is not supported');
+
+      const asset = await upsertAssetFromUpload(file, {
+        label: sanitizeAssetLabel(req.body?.label || ''),
+        altText: sanitizeAssetAltText(req.body?.alt_text || ''),
+        widthPx: parseIntegerInRange(req.body?.width_px, 0, 0, 10000),
+        heightPx: parseIntegerInRange(req.body?.height_px, 0, 0, 10000)
+      });
+      if (!asset) return res.status(500).send('Failed to store asset metadata');
+
+      return res.json({ ok: true, message: 'Asset uploaded', asset });
+    })
+  );
+
+  app.post(
+    '/admin/asset/update',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).send('Valid asset id is required');
+
+      const existing = await get('SELECT * FROM assets WHERE id = ? LIMIT 1', [id]);
+      if (!existing) return res.status(404).send('Asset not found');
+
+      const label = sanitizeAssetLabel(req.body?.label || existing.label || '');
+      const altText = sanitizeAssetAltText(req.body?.alt_text || '');
+
+      await run('UPDATE assets SET label = ?, alt_text = ? WHERE id = ?', [label, altText, id]);
+      const row = await get('SELECT * FROM assets WHERE id = ? LIMIT 1', [id]);
+      const usageCount = await getAssetUsageCount(row?.storage_path || '');
+      const asset = sanitizeAssetForAdmin(row, usageCount);
+      return res.json({ ok: true, message: 'Asset updated', asset });
+    })
+  );
+
+  app.post(
+    '/admin/asset/delete',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const id = Number(req.body?.id || 0);
+      if (!Number.isInteger(id) || id <= 0) return res.status(400).send('Valid asset id is required');
+
+      const existing = await get('SELECT * FROM assets WHERE id = ? LIMIT 1', [id]);
+      if (!existing) return res.status(404).send('Asset not found');
+
+      const storagePath = normalizeLocalAssetPath(existing.storage_path || '');
+      const usageCount = await getAssetUsageCount(storagePath);
+      if (usageCount > 0) {
+        return res.status(409).send('Asset is currently in use. Remove references before deleting.');
+      }
+
+      await run('DELETE FROM assets WHERE id = ?', [id]);
+      await deleteUploadIfLocal(storagePath);
+      return res.json({ ok: true, message: 'Asset deleted', id });
     })
   );
 
@@ -2649,11 +2905,19 @@ function createApp(passedConfig) {
       const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
-      const dataObj = normalizeBlockDataFromBody(type, req.body);
+      let dataObj = normalizeBlockDataFromBody(type, req.body);
 
       if (!type) return res.status(400).send('Valid block type is required');
       if (!dataObj) return res.status(400).send('Block data is invalid for selected type');
       if (pageId <= 0) return res.status(400).send('Invalid page id');
+      if (type === 'image' && dataObj && !String(dataObj.alt || '').trim()) {
+        const localPath = normalizeLocalAssetPath(dataObj.src);
+        if (localPath) {
+          const assetRow = await get('SELECT alt_text FROM assets WHERE storage_path = ? LIMIT 1', [localPath]);
+          const autoAlt = sanitizeText(assetRow?.alt_text || '', 180);
+          if (autoAlt) dataObj = { ...dataObj, alt: autoAlt };
+        }
+      }
       if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
         return res.status(400).send(`Access password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
       }
@@ -2892,6 +3156,7 @@ function createApp(passedConfig) {
       if (req.files?.avatar?.[0]) {
         const rel = '/static/uploads/' + req.files.avatar[0].filename;
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', ['avatar_path', rel]);
+        await upsertAssetFromUpload(req.files.avatar[0], { label: 'Avatar image' });
         if (existingSettings.avatar_path && existingSettings.avatar_path !== rel) {
           await deleteUploadIfLocal(existingSettings.avatar_path);
         }
@@ -2900,6 +3165,7 @@ function createApp(passedConfig) {
       if (req.files?.og_image_file?.[0]) {
         const rel = '/static/uploads/' + req.files.og_image_file[0].filename;
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', ['og_image', rel]);
+        await upsertAssetFromUpload(req.files.og_image_file[0], { label: 'OpenGraph image' });
         if (existingSettings.og_image && existingSettings.og_image !== rel) {
           await deleteUploadIfLocal(existingSettings.og_image);
         }
@@ -2908,6 +3174,7 @@ function createApp(passedConfig) {
       if (req.files?.background_media_file?.[0]) {
         const rel = '/static/uploads/' + req.files.background_media_file[0].filename;
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', ['background_media_path', rel]);
+        await upsertAssetFromUpload(req.files.background_media_file[0], { label: 'Background media' });
         if (existingSettings.background_media_path && existingSettings.background_media_path !== rel) {
           await deleteUploadIfLocal(existingSettings.background_media_path);
         }
