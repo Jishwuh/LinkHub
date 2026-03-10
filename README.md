@@ -15,6 +15,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - Auto link enrichment in admin (URL -> suggested title, icon, preview image)
 - Asset manager with reusable media library (images/videos), alt text metadata, and in-form picker buttons
 - Theme template gallery with one-click presets and JSON import/export
+- Scheduling and targeting rules for links/blocks (time windows + request-based rules)
 - Visit and like counters
 - Open Graph / social share metadata editor
 - Private content controls (password gates, 18+ verification, spoiler reveal)
@@ -89,6 +90,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Theme token controls in Design tab (`surface`, `text`, `muted`, `border`, spacing scale, radius scale)
   - Template gallery with one-click apply presets: `Minimal`, `Glass`, `Neon`, `Creator`, `Business`, `Dark`
   - Template JSON export (`/admin/theme/export`) and import (`/admin/theme/import`) with schema/field validation
+- Scheduling + rules:
+  - Link/block modal controls for start/end datetime windows
+  - Targeting by device, country, referrer host match, and query-param key/value
+  - Public render + `/out/:id` now enforce schedule/rules (not just visibility toggles)
 
 ## Customization Studio
 

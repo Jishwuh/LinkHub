@@ -104,6 +104,62 @@ document.addEventListener('DOMContentLoaded', () => {
     chip.dataset.color = color;
   }
 
+  function formatTooltipDateTime(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return 'Not set';
+    const parsed = new Date(raw);
+    if (!Number.isNaN(parsed.getTime())) return parsed.toLocaleString();
+    return raw.replace('T', ' ');
+  }
+
+  function summarizeRulesTooltip({
+    targetDevices = '',
+    targetCountries = '',
+    targetReferrers = '',
+    targetQueryKey = '',
+    targetQueryValue = ''
+  } = {}) {
+    const lines = [];
+    const devices = String(targetDevices || '').trim();
+    const countries = String(targetCountries || '').trim();
+    const referrers = String(targetReferrers || '').trim();
+    const queryKey = String(targetQueryKey || '').trim();
+    const queryValue = String(targetQueryValue || '').trim();
+
+    if (devices) lines.push(`Devices: ${devices}`);
+    if (countries) lines.push(`Countries: ${countries}`);
+    if (referrers) lines.push(`Referrer contains: ${referrers}`);
+    if (queryKey) lines.push(`Query: ${queryKey}${queryValue ? `=${queryValue}` : ' (any value)'}`);
+
+    return lines.length ? lines.join('\n') : 'No targeting rules.';
+  }
+
+  function summarizeScheduleTooltip({
+    scheduleStart = '',
+    scheduleEnd = '',
+    targetDevices = '',
+    targetCountries = '',
+    targetReferrers = '',
+    targetQueryKey = '',
+    targetQueryValue = ''
+  } = {}) {
+    const start = String(scheduleStart || '').trim();
+    const end = String(scheduleEnd || '').trim();
+    const lines = [
+      `Show from: ${formatTooltipDateTime(start)}`,
+      `Show until: ${formatTooltipDateTime(end)}`
+    ];
+    const rulesSummary = summarizeRulesTooltip({
+      targetDevices,
+      targetCountries,
+      targetReferrers,
+      targetQueryKey,
+      targetQueryValue
+    });
+    if (rulesSummary !== 'No targeting rules.') lines.push('', rulesSummary);
+    return lines.join('\n');
+  }
+
   const csrfToken = $('#csrf-token')?.value || '';
 
   function applySettingsToForm(form, settings) {
@@ -1936,6 +1992,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const featuredPinTopEl = $('#link-modal-featured-pin-top');
     const featuredThumbnailUrlEl = $('#link-modal-featured-thumbnail-url');
     const featuredThumbWrapEl = $('#link-modal-featured-thumb-wrap');
+    const scheduleStartEl = $('#link-modal-schedule-start');
+    const scheduleEndEl = $('#link-modal-schedule-end');
+    const targetDevicesEl = $('#link-modal-target-devices');
+    const targetCountriesEl = $('#link-modal-target-countries');
+    const targetReferrersEl = $('#link-modal-target-referrers');
+    const targetQueryKeyEl = $('#link-modal-target-query-key');
+    const targetQueryValueEl = $('#link-modal-target-query-value');
     const enrichBtn = $('#link-modal-enrich-btn');
     const enrichStatusEl = $('#link-modal-enrich-status');
     const enrichPreviewEl = $('#link-modal-enrich-preview');
@@ -2137,6 +2200,13 @@ document.addEventListener('DOMContentLoaded', () => {
       is_featured: item.dataset.featured === '1',
       featured_pin_top: item.dataset.featuredPinTop === '1',
       featured_thumbnail_url: item.dataset.featuredThumbnailUrl || '',
+      schedule_start_at: item.dataset.scheduleStart || '',
+      schedule_end_at: item.dataset.scheduleEnd || '',
+      target_devices: item.dataset.targetDevices || '',
+      target_countries: item.dataset.targetCountries || '',
+      target_referrers: item.dataset.targetReferrers || '',
+      target_query_key: item.dataset.targetQueryKey || '',
+      target_query_value: item.dataset.targetQueryValue || '',
       order_index: Number(item.dataset.order || 0) || 1
     });
 
@@ -2156,6 +2226,13 @@ document.addEventListener('DOMContentLoaded', () => {
         is_featured: overrides.is_featured == null ? (current.is_featured ? 1 : 0) : asBoolean(overrides.is_featured) ? 1 : 0,
         featured_pin_top: overrides.featured_pin_top == null ? (current.featured_pin_top ? 1 : 0) : asBoolean(overrides.featured_pin_top) ? 1 : 0,
         featured_thumbnail_url: overrides.featured_thumbnail_url ?? current.featured_thumbnail_url,
+        schedule_start_at: overrides.schedule_start_at ?? current.schedule_start_at,
+        schedule_end_at: overrides.schedule_end_at ?? current.schedule_end_at,
+        target_devices: overrides.target_devices ?? current.target_devices,
+        target_countries: overrides.target_countries ?? current.target_countries,
+        target_referrers: overrides.target_referrers ?? current.target_referrers,
+        target_query_key: overrides.target_query_key ?? current.target_query_key,
+        target_query_value: overrides.target_query_value ?? current.target_query_value,
         access_password: '',
         clear_access_password: 0,
         order_index: Number(overrides.order_index || current.order_index || 1)
@@ -2270,6 +2347,30 @@ document.addEventListener('DOMContentLoaded', () => {
       const isSpoiler = asBoolean(link.is_spoiler);
       const isFeatured = asBoolean(link.is_featured);
       const featuredPinTop = isFeatured && asBoolean(link.featured_pin_top);
+      const targetingRules = link.targeting_rules && typeof link.targeting_rules === 'object' ? link.targeting_rules : {};
+      const targetDevices = String(link.target_devices || (Array.isArray(targetingRules.devices) ? targetingRules.devices.join(',') : '') || '').trim();
+      const targetCountries = String(link.target_countries || (Array.isArray(targetingRules.countries) ? targetingRules.countries.join(',') : '') || '').trim();
+      const targetReferrers = String(
+        link.target_referrers || (Array.isArray(targetingRules.referrer_contains) ? targetingRules.referrer_contains.join(',') : '') || ''
+      ).trim();
+      const targetQueryKey = String(link.target_query_key || targetingRules?.query?.key || '').trim();
+      const targetQueryValue = String(link.target_query_value || targetingRules?.query?.value || '').trim();
+      const scheduleTooltip = summarizeScheduleTooltip({
+        scheduleStart: link.schedule_start_at,
+        scheduleEnd: link.schedule_end_at,
+        targetDevices,
+        targetCountries,
+        targetReferrers,
+        targetQueryKey,
+        targetQueryValue
+      });
+      const rulesTooltip = summarizeRulesTooltip({
+        targetDevices,
+        targetCountries,
+        targetReferrers,
+        targetQueryKey,
+        targetQueryValue
+      });
       item.dataset.id = String(link.id || '');
       item.dataset.title = link.title || '';
       item.dataset.url = link.url || '';
@@ -2282,6 +2383,13 @@ document.addEventListener('DOMContentLoaded', () => {
       item.dataset.featured = isFeatured ? '1' : '0';
       item.dataset.featuredPinTop = featuredPinTop ? '1' : '0';
       item.dataset.featuredThumbnailUrl = String(link.featured_thumbnail_url || '').trim();
+      item.dataset.scheduleStart = String(link.schedule_start_at || '').trim();
+      item.dataset.scheduleEnd = String(link.schedule_end_at || '').trim();
+      item.dataset.targetDevices = targetDevices;
+      item.dataset.targetCountries = targetCountries;
+      item.dataset.targetReferrers = targetReferrers;
+      item.dataset.targetQueryKey = targetQueryKey;
+      item.dataset.targetQueryValue = targetQueryValue;
       if (link.order_index != null) item.dataset.order = String(link.order_index);
 
       item.classList.toggle('is-hidden-link', !isVisible);
@@ -2308,22 +2416,57 @@ document.addEventListener('DOMContentLoaded', () => {
         if (link.icon_key) {
           iconPill.hidden = false;
           iconPill.textContent = link.icon_key;
+          iconPill.title = `Icon: ${link.icon_key}\nDestination: ${link.url || '(not set)'}`;
         } else {
           iconPill.hidden = true;
           iconPill.textContent = '';
+          iconPill.title = '';
         }
       }
 
       const accessPill = $('.link-pill-access', item);
-      if (accessPill) accessPill.hidden = !hasPassword;
+      if (accessPill) {
+        accessPill.hidden = !hasPassword;
+        accessPill.title = hasPassword
+          ? `Password protected.\nFor security, LinkHub stores only a hash, so the password cannot be viewed.\nDestination: ${link.url || '(not set)'}`
+          : '';
+      }
       const agePill = $('.link-pill-age', item);
-      if (agePill) agePill.hidden = !isAgeRestricted;
+      if (agePill) {
+        agePill.hidden = !isAgeRestricted;
+        agePill.title = isAgeRestricted ? `Requires 18+ verification before opening.\nDestination: ${link.url || '(not set)'}` : '';
+      }
       const spoilerPill = $('.link-pill-spoiler', item);
-      if (spoilerPill) spoilerPill.hidden = !isSpoiler;
+      if (spoilerPill) {
+        spoilerPill.hidden = !isSpoiler;
+        spoilerPill.title = isSpoiler ? `Hidden behind spoiler reveal. First click reveals, next click opens.\nDestination: ${link.url || '(not set)'}` : '';
+      }
       const featuredPill = $('.link-pill-featured', item);
-      if (featuredPill) featuredPill.hidden = !isFeatured;
+      if (featuredPill) {
+        featuredPill.hidden = !isFeatured;
+        featuredPill.title = isFeatured ? `Highlighted featured link card.\nDestination: ${link.url || '(not set)'}` : '';
+      }
       const pinPill = $('.link-pill-pin', item);
-      if (pinPill) pinPill.hidden = !featuredPinTop;
+      if (pinPill) {
+        pinPill.hidden = !featuredPinTop;
+        pinPill.title = featuredPinTop ? `Pinned above the links cluster.\nDestination: ${link.url || '(not set)'}` : '';
+      }
+      const schedulePill = $('.link-pill-schedule', item);
+      if (schedulePill) {
+        const hasSchedule = String(link.schedule_start_at || '').trim() || String(link.schedule_end_at || '').trim();
+        schedulePill.hidden = !hasSchedule;
+        schedulePill.title = hasSchedule ? `${scheduleTooltip}\n\nDestination: ${link.url || '(not set)'}` : '';
+      }
+      const rulesPill = $('.link-pill-rules', item);
+      if (rulesPill) {
+        const hasRules =
+          targetDevices ||
+          targetCountries ||
+          targetReferrers ||
+          targetQueryKey;
+        rulesPill.hidden = !hasRules;
+        rulesPill.title = hasRules ? `${rulesTooltip}\n\nDestination: ${link.url || '(not set)'}` : '';
+      }
 
       applyColorChip($('.color-chip', item), link.color_hex || '#2a2a2a');
 
@@ -2352,6 +2495,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="link-pill link-pill-spoiler" hidden>SPOILER</span>
           <span class="link-pill link-pill-featured" hidden>FEATURED</span>
           <span class="link-pill link-pill-pin" hidden>PINNED</span>
+          <span class="link-pill link-pill-schedule" hidden>SCHEDULED</span>
+          <span class="link-pill link-pill-rules" hidden>RULES</span>
           <span class="color-chip" data-color="#2a2a2a" title="#2a2a2a"></span>
         </div>
         <div class="link-admin-actions">
@@ -2387,6 +2532,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (featuredEl) featuredEl.checked = false;
       if (featuredPinTopEl) featuredPinTopEl.checked = false;
       if (featuredThumbnailUrlEl) featuredThumbnailUrlEl.value = '';
+      if (scheduleStartEl) scheduleStartEl.value = '';
+      if (scheduleEndEl) scheduleEndEl.value = '';
+      if (targetDevicesEl) targetDevicesEl.value = '';
+      if (targetCountriesEl) targetCountriesEl.value = '';
+      if (targetReferrersEl) targetReferrersEl.value = '';
+      if (targetQueryKeyEl) targetQueryKeyEl.value = '';
+      if (targetQueryValueEl) targetQueryValueEl.value = '';
       syncModalColor();
       syncFeaturedControls();
       syncIconPreview();
@@ -2412,6 +2564,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (featuredEl) featuredEl.checked = item.dataset.featured === '1';
       if (featuredPinTopEl) featuredPinTopEl.checked = item.dataset.featuredPinTop === '1';
       if (featuredThumbnailUrlEl) featuredThumbnailUrlEl.value = item.dataset.featuredThumbnailUrl || '';
+      if (scheduleStartEl) scheduleStartEl.value = item.dataset.scheduleStart || '';
+      if (scheduleEndEl) scheduleEndEl.value = item.dataset.scheduleEnd || '';
+      if (targetDevicesEl) targetDevicesEl.value = item.dataset.targetDevices || '';
+      if (targetCountriesEl) targetCountriesEl.value = item.dataset.targetCountries || '';
+      if (targetReferrersEl) targetReferrersEl.value = item.dataset.targetReferrers || '';
+      if (targetQueryKeyEl) targetQueryKeyEl.value = item.dataset.targetQueryKey || '';
+      if (targetQueryValueEl) targetQueryValueEl.value = item.dataset.targetQueryValue || '';
       syncModalColor();
       syncFeaturedControls();
       syncIconPreview();
@@ -2453,6 +2612,13 @@ document.addEventListener('DOMContentLoaded', () => {
         is_featured: featuredEl?.checked ? 1 : 0,
         featured_pin_top: featuredPinTopEl?.checked ? 1 : 0,
         featured_thumbnail_url: featuredThumbnailUrlEl?.value || '',
+        schedule_start_at: scheduleStartEl?.value || '',
+        schedule_end_at: scheduleEndEl?.value || '',
+        target_devices: targetDevicesEl?.value || '',
+        target_countries: targetCountriesEl?.value || '',
+        target_referrers: targetReferrersEl?.value || '',
+        target_query_key: targetQueryKeyEl?.value || '',
+        target_query_value: targetQueryValueEl?.value || '',
         access_password: accessPasswordEl?.value || '',
         clear_access_password: clearAccessPasswordEl?.checked ? 1 : 0,
         order_index: orderIndex
@@ -2702,6 +2868,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const imageCaptionEl = $('#block-image-caption');
     const embedTitleEl = $('#block-embed-title');
     const embedHtmlEl = $('#block-embed-html');
+    const scheduleStartEl = $('#block-modal-schedule-start');
+    const scheduleEndEl = $('#block-modal-schedule-end');
+    const targetDevicesEl = $('#block-modal-target-devices');
+    const targetCountriesEl = $('#block-modal-target-countries');
+    const targetReferrersEl = $('#block-modal-target-referrers');
+    const targetQueryKeyEl = $('#block-modal-target-query-key');
+    const targetQueryValueEl = $('#block-modal-target-query-value');
 
     const typeGroups = $$('.block-type-group', form);
     let dragArmedId = null;
@@ -2840,6 +3013,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (imageCaptionEl) imageCaptionEl.value = '';
       if (embedTitleEl) embedTitleEl.value = '';
       if (embedHtmlEl) embedHtmlEl.value = '';
+      if (scheduleStartEl) scheduleStartEl.value = '';
+      if (scheduleEndEl) scheduleEndEl.value = '';
+      if (targetDevicesEl) targetDevicesEl.value = '';
+      if (targetCountriesEl) targetCountriesEl.value = '';
+      if (targetReferrersEl) targetReferrersEl.value = '';
+      if (targetQueryKeyEl) targetQueryKeyEl.value = '';
+      if (targetQueryValueEl) targetQueryValueEl.value = '';
       if (accessPasswordEl) accessPasswordEl.value = '';
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
       if (ageRestrictedEl) ageRestrictedEl.checked = false;
@@ -2870,6 +3050,13 @@ document.addEventListener('DOMContentLoaded', () => {
         has_password: item.dataset.hasPassword === '1',
         is_age_restricted: item.dataset.ageRestricted === '1',
         is_spoiler: item.dataset.spoiler === '1',
+        schedule_start_at: item.dataset.scheduleStart || '',
+        schedule_end_at: item.dataset.scheduleEnd || '',
+        target_devices: item.dataset.targetDevices || '',
+        target_countries: item.dataset.targetCountries || '',
+        target_referrers: item.dataset.targetReferrers || '',
+        target_query_key: item.dataset.targetQueryKey || '',
+        target_query_value: item.dataset.targetQueryValue || '',
         summary: blockSummary(type, dataObj)
       };
     };
@@ -2904,7 +3091,14 @@ document.addEventListener('DOMContentLoaded', () => {
         image_alt: overrides.image_alt ?? data.alt ?? '',
         image_caption: overrides.image_caption ?? data.caption ?? '',
         embed_title: overrides.embed_title ?? data.title ?? '',
-        embed_html: overrides.embed_html ?? data.embed_html ?? ''
+        embed_html: overrides.embed_html ?? data.embed_html ?? '',
+        schedule_start_at: overrides.schedule_start_at ?? block.schedule_start_at ?? '',
+        schedule_end_at: overrides.schedule_end_at ?? block.schedule_end_at ?? '',
+        target_devices: overrides.target_devices ?? block.target_devices ?? '',
+        target_countries: overrides.target_countries ?? block.target_countries ?? '',
+        target_referrers: overrides.target_referrers ?? block.target_referrers ?? '',
+        target_query_key: overrides.target_query_key ?? block.target_query_key ?? '',
+        target_query_value: overrides.target_query_value ?? block.target_query_value ?? ''
       };
     };
 
@@ -3025,6 +3219,40 @@ document.addEventListener('DOMContentLoaded', () => {
       const hasPassword = asBoolean(block.has_password);
       const isAgeRestricted = asBoolean(block.is_age_restricted);
       const isSpoiler = asBoolean(block.is_spoiler);
+      const targetingRules = block.targeting_rules && typeof block.targeting_rules === 'object' ? block.targeting_rules : {};
+      const targetDevices = String(block.target_devices || (Array.isArray(targetingRules.devices) ? targetingRules.devices.join(',') : '') || '').trim();
+      const targetCountries = String(block.target_countries || (Array.isArray(targetingRules.countries) ? targetingRules.countries.join(',') : '') || '').trim();
+      const targetReferrers = String(
+        block.target_referrers || (Array.isArray(targetingRules.referrer_contains) ? targetingRules.referrer_contains.join(',') : '') || ''
+      ).trim();
+      const targetQueryKey = String(block.target_query_key || targetingRules?.query?.key || '').trim();
+      const targetQueryValue = String(block.target_query_value || targetingRules?.query?.value || '').trim();
+      const blockDestination = (() => {
+        if (type === 'button_link') return String(data.url || '').trim();
+        if (type === 'image') return String(data.src || '').trim();
+        if (type === 'embed') {
+          const html = String(data.embed_html || '');
+          const match = html.match(/\bsrc=(["'])(https?:\/\/[^"']+)\1/i);
+          return String(match?.[2] || '').trim();
+        }
+        return '';
+      })();
+      const scheduleTooltip = summarizeScheduleTooltip({
+        scheduleStart: block.schedule_start_at,
+        scheduleEnd: block.schedule_end_at,
+        targetDevices,
+        targetCountries,
+        targetReferrers,
+        targetQueryKey,
+        targetQueryValue
+      });
+      const rulesTooltip = summarizeRulesTooltip({
+        targetDevices,
+        targetCountries,
+        targetReferrers,
+        targetQueryKey,
+        targetQueryValue
+      });
       item.dataset.id = String(block.id || '');
       item.dataset.type = type;
       item.dataset.visible = isVisible ? '1' : '0';
@@ -3033,6 +3261,13 @@ document.addEventListener('DOMContentLoaded', () => {
       item.dataset.hasPassword = hasPassword ? '1' : '0';
       item.dataset.ageRestricted = isAgeRestricted ? '1' : '0';
       item.dataset.spoiler = isSpoiler ? '1' : '0';
+      item.dataset.scheduleStart = String(block.schedule_start_at || '').trim();
+      item.dataset.scheduleEnd = String(block.schedule_end_at || '').trim();
+      item.dataset.targetDevices = targetDevices;
+      item.dataset.targetCountries = targetCountries;
+      item.dataset.targetReferrers = targetReferrers;
+      item.dataset.targetQueryKey = targetQueryKey;
+      item.dataset.targetQueryValue = targetQueryValue;
       item.classList.toggle('is-hidden-link', !isVisible);
 
       const titleNode = $('.link-admin-title', item);
@@ -3054,13 +3289,39 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const typePill = $('.link-pill-type', item) || $('.link-pill', item);
-      if (typePill) typePill.textContent = type;
+      if (typePill) {
+        typePill.textContent = type;
+        typePill.title = `Block type: ${type}${blockDestination ? `\nSource: ${blockDestination}` : ''}`;
+      }
       const accessPill = $('.link-pill-access', item);
-      if (accessPill) accessPill.hidden = !hasPassword;
+      if (accessPill) {
+        accessPill.hidden = !hasPassword;
+        accessPill.title = hasPassword
+          ? `Password protected.\nFor security, LinkHub stores only a hash, so the password cannot be viewed.${blockDestination ? `\nSource: ${blockDestination}` : ''}`
+          : '';
+      }
       const agePill = $('.link-pill-age', item);
-      if (agePill) agePill.hidden = !isAgeRestricted;
+      if (agePill) {
+        agePill.hidden = !isAgeRestricted;
+        agePill.title = isAgeRestricted ? `Requires 18+ verification before interaction.${blockDestination ? `\nSource: ${blockDestination}` : ''}` : '';
+      }
       const spoilerPill = $('.link-pill-spoiler', item);
-      if (spoilerPill) spoilerPill.hidden = !isSpoiler;
+      if (spoilerPill) {
+        spoilerPill.hidden = !isSpoiler;
+        spoilerPill.title = isSpoiler ? `Hidden behind spoiler reveal.${blockDestination ? `\nSource: ${blockDestination}` : ''}` : '';
+      }
+      const schedulePill = $('.link-pill-schedule', item);
+      if (schedulePill) {
+        const hasSchedule = String(block.schedule_start_at || '').trim() || String(block.schedule_end_at || '').trim();
+        schedulePill.hidden = !hasSchedule;
+        schedulePill.title = hasSchedule ? `${scheduleTooltip}${blockDestination ? `\n\nSource: ${blockDestination}` : ''}` : '';
+      }
+      const rulesPill = $('.link-pill-rules', item);
+      if (rulesPill) {
+        const hasRules = targetDevices || targetCountries || targetReferrers || targetQueryKey;
+        rulesPill.hidden = !hasRules;
+        rulesPill.title = hasRules ? `${rulesTooltip}${blockDestination ? `\n\nSource: ${blockDestination}` : ''}` : '';
+      }
 
       const qrBtn = $('[data-action="qr"]', item);
       if (qrBtn) {
@@ -3089,6 +3350,8 @@ document.addEventListener('DOMContentLoaded', () => {
           <span class="link-pill link-pill-access" hidden>LOCKED</span>
           <span class="link-pill link-pill-age" hidden>18+</span>
           <span class="link-pill link-pill-spoiler" hidden>SPOILER</span>
+          <span class="link-pill link-pill-schedule" hidden>SCHEDULED</span>
+          <span class="link-pill link-pill-rules" hidden>RULES</span>
         </div>
         <div class="link-admin-actions">
           <button type="button" class="icon-action" data-action="edit" title="Edit block">Edit</button>
@@ -3137,6 +3400,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (imageCaptionEl) imageCaptionEl.value = String(data.caption || '');
       if (embedTitleEl) embedTitleEl.value = String(data.title || '');
       if (embedHtmlEl) embedHtmlEl.value = String(data.embed_html || '');
+      if (scheduleStartEl) scheduleStartEl.value = item.dataset.scheduleStart || '';
+      if (scheduleEndEl) scheduleEndEl.value = item.dataset.scheduleEnd || '';
+      if (targetDevicesEl) targetDevicesEl.value = item.dataset.targetDevices || '';
+      if (targetCountriesEl) targetCountriesEl.value = item.dataset.targetCountries || '';
+      if (targetReferrersEl) targetReferrersEl.value = item.dataset.targetReferrers || '';
+      if (targetQueryKeyEl) targetQueryKeyEl.value = item.dataset.targetQueryKey || '';
+      if (targetQueryValueEl) targetQueryValueEl.value = item.dataset.targetQueryValue || '';
       if (accessPasswordEl) accessPasswordEl.value = '';
       if (clearAccessPasswordEl) clearAccessPasswordEl.checked = false;
       if (ageRestrictedEl) ageRestrictedEl.checked = item.dataset.ageRestricted === '1';
@@ -3195,7 +3465,14 @@ document.addEventListener('DOMContentLoaded', () => {
         image_alt: imageAltEl?.value || '',
         image_caption: imageCaptionEl?.value || '',
         embed_title: embedTitleEl?.value || '',
-        embed_html: embedHtmlEl?.value || ''
+        embed_html: embedHtmlEl?.value || '',
+        schedule_start_at: scheduleStartEl?.value || '',
+        schedule_end_at: scheduleEndEl?.value || '',
+        target_devices: targetDevicesEl?.value || '',
+        target_countries: targetCountriesEl?.value || '',
+        target_referrers: targetReferrersEl?.value || '',
+        target_query_key: targetQueryKeyEl?.value || '',
+        target_query_value: targetQueryValueEl?.value || ''
       };
 
       try {
@@ -3391,13 +3668,30 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const pill = $('.link-pill', item);
-      if (pill) pill.textContent = isActive ? 'Active' : 'Inactive';
+      if (pill) {
+        pill.textContent = isActive ? 'Active' : 'Inactive';
+        pill.title = `Redirect status: ${isActive ? 'Active' : 'Inactive'}\nDestination: ${redirect.target_url || '(not set)'}`;
+      }
       const accessPill = $('.link-pill-access', item);
-      if (accessPill) accessPill.hidden = !hasPassword;
+      if (accessPill) {
+        accessPill.hidden = !hasPassword;
+        accessPill.title = hasPassword
+          ? `Password protected.\nFor security, LinkHub stores only a hash, so the password cannot be viewed.\nDestination: ${redirect.target_url || '(not set)'}`
+          : '';
+      }
       const agePill = $('.link-pill-age', item);
-      if (agePill) agePill.hidden = !isAgeRestricted;
+      if (agePill) {
+        agePill.hidden = !isAgeRestricted;
+        agePill.title = isAgeRestricted ? `Requires 18+ verification before redirect.\nDestination: ${redirect.target_url || '(not set)'}` : '';
+      }
       const ogPill = $('.link-pill-og', item);
-      if (ogPill) ogPill.hidden = item.dataset.hasCustomOg !== '1';
+      if (ogPill) {
+        const hasCustomOg = item.dataset.hasCustomOg === '1';
+        ogPill.hidden = !hasCustomOg;
+        ogPill.title = hasCustomOg
+          ? `Custom OpenGraph/Twitter preview enabled.\nTitle: ${redirect.og_title || '(default)'}\nDescription: ${redirect.og_description || '(default)'}\nImage: ${redirect.og_image || '(default)'}`
+          : '';
+      }
 
       const toggleBtn = $('[data-action="toggle"]', item);
       if (toggleBtn) {

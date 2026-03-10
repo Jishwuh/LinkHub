@@ -50,9 +50,9 @@
 
 ## Later (Premium differentiators)
 
-- [ ] **Scheduling + rules**
-  - [ ] Schedule blocks/links to show between dates/times
-  - [ ] Optional targeting rules: device, geo, referrer, query param
+- [x] **Scheduling + rules**
+  - [x] Schedule blocks/links to show between dates/times
+  - [x] Optional targeting rules: device, geo, referrer, query param
 
 ---
 

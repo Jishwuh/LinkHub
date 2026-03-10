@@ -57,6 +57,7 @@ const ALLOWED_BUTTON_STYLES = ['rounded', 'pill', 'square', 'glass'];
 const ALLOWED_ANIMATION_STYLES = ['none', 'subtle', 'energetic'];
 const ALLOWED_GRADIENT_PRESETS = ['sunset', 'ocean', 'forest', 'neon', 'midnight'];
 const ALLOWED_PATTERN_PRESETS = ['none', 'grid', 'dots', 'noise'];
+const TARGETING_DEVICE_TYPES = ['desktop', 'mobile', 'tablet', 'bot', 'unknown'];
 const THEME_TEMPLATE_SCHEMA = 'linkhub-theme-v1';
 const THEME_PRESET_KEYS = ['minimal', 'glass', 'neon', 'creator', 'business', 'dark'];
 const BLOCK_TYPES = ['heading', 'rich_text', 'button_link', 'image', 'embed', 'links_cluster'];
@@ -833,6 +834,148 @@ function resolveCountryName(code) {
   return String(countryNameResolver.of(code) || code);
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function coerceDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const withZone = /([zZ]|[+-]\d{2}:\d{2})$/.test(normalized) ? normalized : `${normalized}Z`;
+  const parsed = new Date(withZone);
+  if (!Number.isNaN(parsed.getTime())) return parsed;
+  const localParsed = new Date(raw);
+  return Number.isNaN(localParsed.getTime()) ? null : localParsed;
+}
+
+function toUtcMySqlDateTime(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())} ${pad2(date.getUTCHours())}:${pad2(date.getUTCMinutes())}:00`;
+}
+
+function normalizeScheduleInputToUtc(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const normalized = raw.replace(' ', 'T');
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return toUtcMySqlDateTime(parsed);
+}
+
+function formatScheduleForInput(value) {
+  const parsed = coerceDate(value);
+  if (!parsed) return '';
+  return `${parsed.getFullYear()}-${pad2(parsed.getMonth() + 1)}-${pad2(parsed.getDate())}T${pad2(parsed.getHours())}:${pad2(parsed.getMinutes())}`;
+}
+
+function isWithinScheduleWindow(row, now = new Date()) {
+  const nowDate = coerceDate(now) || new Date();
+  const start = coerceDate(row?.schedule_start_at);
+  const end = coerceDate(row?.schedule_end_at);
+  if (start && nowDate < start) return false;
+  if (end && nowDate > end) return false;
+  return true;
+}
+
+function splitCsvTokens(value, maxItems = 10) {
+  if (Array.isArray(value)) {
+    return value
+      .map(item => String(item || '').trim())
+      .filter(Boolean)
+      .slice(0, maxItems);
+  }
+  return String(value || '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+    .slice(0, maxItems);
+}
+
+function sanitizeTargetingRules(input) {
+  let raw = input;
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = {};
+    }
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+
+  const devices = splitCsvTokens(raw.devices, 10)
+    .map(item => item.toLowerCase())
+    .filter(item => TARGETING_DEVICE_TYPES.includes(item));
+  const countries = splitCsvTokens(raw.countries, 20)
+    .map(item => normalizeCountryCode(item))
+    .filter(Boolean);
+  const referrerContains = splitCsvTokens(raw.referrer_contains, 12)
+    .map(item => sanitizeText(item, 80).toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, ''))
+    .filter(Boolean);
+
+  const queryKey = sanitizeText(raw.query?.key || '', 64).replace(/[^a-zA-Z0-9_.-]/g, '');
+  const queryValue = sanitizeText(raw.query?.value || '', 120);
+
+  const normalized = {};
+  if (devices.length) normalized.devices = Array.from(new Set(devices));
+  if (countries.length) normalized.countries = Array.from(new Set(countries));
+  if (referrerContains.length) normalized.referrer_contains = Array.from(new Set(referrerContains));
+  if (queryKey) {
+    normalized.query = { key: queryKey };
+    if (queryValue) normalized.query.value = queryValue;
+  }
+  return normalized;
+}
+
+function sanitizeTargetingRulesFromBody(body) {
+  const source = body && typeof body === 'object' ? body : {};
+  return sanitizeTargetingRules({
+    devices: source.target_devices,
+    countries: source.target_countries,
+    referrer_contains: source.target_referrers,
+    query: {
+      key: source.target_query_key,
+      value: source.target_query_value
+    }
+  });
+}
+
+function matchesTargetingRules(rawRules, req) {
+  const rules = sanitizeTargetingRules(rawRules);
+  if (!Object.keys(rules).length) return true;
+
+  if (Array.isArray(rules.devices) && rules.devices.length) {
+    const device = detectDeviceType(req.get('user-agent'));
+    if (!rules.devices.includes(device)) return false;
+  }
+
+  if (Array.isArray(rules.countries) && rules.countries.length) {
+    const geo = getGeoFromRequestHeaders(req);
+    const country = normalizeCountryCode(geo.countryCode);
+    if (!country || !rules.countries.includes(country)) return false;
+  }
+
+  if (Array.isArray(rules.referrer_contains) && rules.referrer_contains.length) {
+    const host = parseReferrerHost(req.get('referer')).replace(/^www\./, '');
+    if (!host) return false;
+    const ok = rules.referrer_contains.some(token => host.includes(String(token || '').toLowerCase()));
+    if (!ok) return false;
+  }
+
+  if (rules.query?.key) {
+    const queryValueRaw = req.query?.[rules.query.key];
+    const queryValue = Array.isArray(queryValueRaw) ? String(queryValueRaw[0] || '') : String(queryValueRaw || '');
+    if (!queryValue && !rules.query.value) return false;
+    if (rules.query.value && queryValue !== rules.query.value) return false;
+  }
+
+  return true;
+}
+
 function getGeoFromRequestHeaders(req) {
   const countryCode = normalizeCountryCode(
     req.get('cf-ipcountry') || req.get('x-vercel-ip-country') || req.get('cloudfront-viewer-country') || req.get('x-country-code')
@@ -1370,7 +1513,10 @@ function createApp(passedConfig) {
       ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted'],
       ['is_featured', 'is_featured TINYINT(1) NOT NULL DEFAULT 0 AFTER is_spoiler'],
       ['featured_pin_top', 'featured_pin_top TINYINT(1) NOT NULL DEFAULT 0 AFTER is_featured'],
-      ['featured_thumbnail_url', "featured_thumbnail_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER featured_pin_top"]
+      ['featured_thumbnail_url', "featured_thumbnail_url VARCHAR(2048) NOT NULL DEFAULT '' AFTER featured_pin_top"],
+      ['schedule_start_at', 'schedule_start_at DATETIME NULL AFTER featured_thumbnail_url'],
+      ['schedule_end_at', 'schedule_end_at DATETIME NULL AFTER schedule_start_at'],
+      ['targeting_rules', 'targeting_rules JSON NULL AFTER schedule_end_at']
     ]);
   }
 
@@ -1378,7 +1524,10 @@ function createApp(passedConfig) {
     await ensureTableColumns('blocks', [
       ['access_password_hash', 'access_password_hash VARCHAR(255) NULL AFTER is_visible'],
       ['is_age_restricted', 'is_age_restricted TINYINT(1) NOT NULL DEFAULT 0 AFTER access_password_hash'],
-      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted']
+      ['is_spoiler', 'is_spoiler TINYINT(1) NOT NULL DEFAULT 0 AFTER is_age_restricted'],
+      ['schedule_start_at', 'schedule_start_at DATETIME NULL AFTER is_spoiler'],
+      ['schedule_end_at', 'schedule_end_at DATETIME NULL AFTER schedule_start_at'],
+      ['targeting_rules', 'targeting_rules JSON NULL AFTER schedule_end_at']
     ]);
   }
 
@@ -1781,6 +1930,9 @@ function createApp(passedConfig) {
     const isFeatured = parseBoolean(row.is_featured, false) ? 1 : 0;
     const featuredPinTop = isFeatured && parseBoolean(row.featured_pin_top, false) ? 1 : 0;
     const featuredThumbnail = isFeatured ? normalizeMediaAsset(sanitizeText(row.featured_thumbnail_url || '', 2048)) : '';
+    const targetingRules = sanitizeTargetingRules(row.targeting_rules);
+    const scheduleStart = formatScheduleForInput(row.schedule_start_at);
+    const scheduleEnd = formatScheduleForInput(row.schedule_end_at);
     return {
       id: Number(row.id || 0),
       title: row.title || '',
@@ -1794,7 +1946,12 @@ function createApp(passedConfig) {
       is_spoiler: parseBoolean(row.is_spoiler, false) ? 1 : 0,
       is_featured: isFeatured,
       featured_pin_top: featuredPinTop,
-      featured_thumbnail_url: featuredThumbnail
+      featured_thumbnail_url: featuredThumbnail,
+      schedule_start_at: scheduleStart,
+      schedule_end_at: scheduleEnd,
+      targeting_rules: targetingRules,
+      has_schedule: scheduleStart || scheduleEnd ? 1 : 0,
+      has_targeting_rules: Object.keys(targetingRules).length ? 1 : 0
     };
   }
 
@@ -1820,12 +1977,20 @@ function createApp(passedConfig) {
   function sanitizeBlockForAdmin(row) {
     const normalized = normalizeBlockRow(row);
     if (!normalized) return null;
+    const targetingRules = sanitizeTargetingRules(row?.targeting_rules);
+    const scheduleStart = formatScheduleForInput(row?.schedule_start_at);
+    const scheduleEnd = formatScheduleForInput(row?.schedule_end_at);
     const { access_password_hash: _ignoredHash, ...rest } = normalized;
     return {
       ...rest,
       has_password: hasPasswordGate(row) ? 1 : 0,
       is_age_restricted: parseBoolean(row?.is_age_restricted, false) ? 1 : 0,
-      is_spoiler: parseBoolean(row?.is_spoiler, false) ? 1 : 0
+      is_spoiler: parseBoolean(row?.is_spoiler, false) ? 1 : 0,
+      schedule_start_at: scheduleStart,
+      schedule_end_at: scheduleEnd,
+      targeting_rules: targetingRules,
+      has_schedule: scheduleStart || scheduleEnd ? 1 : 0,
+      has_targeting_rules: Object.keys(targetingRules).length ? 1 : 0
     };
   }
 
@@ -2477,8 +2642,11 @@ function createApp(passedConfig) {
         await run('UPDATE metrics SET `value` = `value` + 1 WHERE `key` = ?', ['visits']);
       }
 
-      const blocksRaw = await q('SELECT * FROM blocks WHERE page_id = 1 AND is_visible = 1 ORDER BY order_index ASC, id ASC');
+      const blocksRaw = await q(
+        'SELECT * FROM blocks WHERE page_id = 1 AND is_visible = 1 AND (schedule_start_at IS NULL OR schedule_start_at <= UTC_TIMESTAMP()) AND (schedule_end_at IS NULL OR schedule_end_at >= UTC_TIMESTAMP()) ORDER BY order_index ASC, id ASC'
+      );
       const blocks = blocksRaw
+        .filter(block => matchesTargetingRules(block.targeting_rules, req))
         .map(normalizeBlockRow)
         .filter(Boolean)
         .map(block => ({
@@ -2486,8 +2654,10 @@ function createApp(passedConfig) {
           ...getRowAccessState(req, 'block', block, block.id)
         }));
 
-      const linksRaw = await q('SELECT * FROM links WHERE is_visible = 1 ORDER BY order_index ASC, id ASC');
-      const links = linksRaw.map(link => {
+      const linksRaw = await q(
+        'SELECT * FROM links WHERE is_visible = 1 AND (schedule_start_at IS NULL OR schedule_start_at <= UTC_TIMESTAMP()) AND (schedule_end_at IS NULL OR schedule_end_at >= UTC_TIMESTAMP()) ORDER BY order_index ASC, id ASC'
+      );
+      const links = linksRaw.filter(link => matchesTargetingRules(link.targeting_rules, req)).map(link => {
         const accessState = getRowAccessState(req, 'link', link, link.id);
         const isFeatured = parseBoolean(link.is_featured, false) ? 1 : 0;
         const featuredPinTop = isFeatured && parseBoolean(link.featured_pin_top, false) ? 1 : 0;
@@ -2705,8 +2875,12 @@ function createApp(passedConfig) {
       const id = Number(req.params?.id || 0);
       if (!Number.isInteger(id) || id <= 0) return next();
 
-      const link = await get('SELECT id, title, url, access_password_hash, is_age_restricted FROM links WHERE id = ?', [id]);
+      const link = await get(
+        'SELECT id, title, url, access_password_hash, is_age_restricted, targeting_rules, schedule_start_at, schedule_end_at FROM links WHERE id = ? AND is_visible = 1',
+        [id]
+      );
       if (!link?.url) return next();
+      if (!isWithinScheduleWindow(link) || !matchesTargetingRules(link.targeting_rules, req)) return next();
 
       if (hasPasswordGate(link) && !isUnlocked(req, 'link', link.id)) {
         return renderAccessGate(res, {
@@ -3134,10 +3308,17 @@ function createApp(passedConfig) {
       const isFeatured = parseBoolean(req.body?.is_featured, false) ? 1 : 0;
       const featuredPinTop = isFeatured && parseBoolean(req.body?.featured_pin_top, false) ? 1 : 0;
       const featuredThumbnailUrl = isFeatured ? normalizeMediaAsset(sanitizeText(req.body?.featured_thumbnail_url, 2048)) : '';
+      const scheduleStartAt = normalizeScheduleInputToUtc(req.body?.schedule_start_at);
+      const scheduleEndAt = normalizeScheduleInputToUtc(req.body?.schedule_end_at);
+      const targetingRules = sanitizeTargetingRulesFromBody(req.body);
+      const targetingRulesJson = Object.keys(targetingRules).length ? JSON.stringify(targetingRules) : null;
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
 
       if (!title || !targetUrl) return res.status(400).send('Title and valid URL are required');
+      if (scheduleStartAt && scheduleEndAt && new Date(`${scheduleStartAt.replace(' ', 'T')}Z`) > new Date(`${scheduleEndAt.replace(' ', 'T')}Z`)) {
+        return res.status(400).send('Schedule end must be after schedule start');
+      }
       if (accessPasswordRaw && !isValidAccessPassword(accessPasswordRaw)) {
         return res.status(400).send(`Access password must be ${MIN_ACCESS_PASSWORD_LENGTH}-${MAX_ACCESS_PASSWORD_LENGTH} characters`);
       }
@@ -3156,7 +3337,7 @@ function createApp(passedConfig) {
       let linkId = id;
       if (id > 0) {
         await run(
-          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ?, is_featured = ?, featured_pin_top = ?, featured_thumbnail_url = ? WHERE id = ?',
+          'UPDATE links SET title = ?, url = ?, icon_key = ?, order_index = ?, is_visible = ?, color_hex = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ?, is_featured = ?, featured_pin_top = ?, featured_thumbnail_url = ?, schedule_start_at = ?, schedule_end_at = ?, targeting_rules = ? WHERE id = ?',
           [
             title,
             targetUrl,
@@ -3170,13 +3351,32 @@ function createApp(passedConfig) {
             isFeatured,
             featuredPinTop,
             featuredThumbnailUrl,
+            scheduleStartAt || null,
+            scheduleEndAt || null,
+            targetingRulesJson,
             id
           ]
         );
       } else {
         const insertResult = await runResult(
-          'INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex, access_password_hash, is_age_restricted, is_spoiler, is_featured, featured_pin_top, featured_thumbnail_url) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-          [title, targetUrl, iconKey, order, visible, colorHex, accessPasswordHash || null, isAgeRestricted, isSpoiler, isFeatured, featuredPinTop, featuredThumbnailUrl]
+          'INSERT INTO links (title, url, icon_key, order_index, is_visible, color_hex, access_password_hash, is_age_restricted, is_spoiler, is_featured, featured_pin_top, featured_thumbnail_url, schedule_start_at, schedule_end_at, targeting_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            title,
+            targetUrl,
+            iconKey,
+            order,
+            visible,
+            colorHex,
+            accessPasswordHash || null,
+            isAgeRestricted,
+            isSpoiler,
+            isFeatured,
+            featuredPinTop,
+            featuredThumbnailUrl,
+            scheduleStartAt || null,
+            scheduleEndAt || null,
+            targetingRulesJson
+          ]
         );
         linkId = Number(insertResult.insertId || 0);
       }
@@ -3279,6 +3479,10 @@ function createApp(passedConfig) {
       const visible = parseBoolean(req.body?.is_visible, false) ? 1 : 0;
       const isAgeRestricted = parseBoolean(req.body?.is_age_restricted, false) ? 1 : 0;
       const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
+      const scheduleStartAt = normalizeScheduleInputToUtc(req.body?.schedule_start_at);
+      const scheduleEndAt = normalizeScheduleInputToUtc(req.body?.schedule_end_at);
+      const targetingRules = sanitizeTargetingRulesFromBody(req.body);
+      const targetingRulesJson = Object.keys(targetingRules).length ? JSON.stringify(targetingRules) : null;
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
       const imageAssetId = Number.parseInt(String(req.body?.image_asset_id || ''), 10);
@@ -3299,6 +3503,9 @@ function createApp(passedConfig) {
       if (!type) return res.status(400).send('Valid block type is required');
       if (!dataObj) return res.status(400).send('Block data is invalid for selected type');
       if (pageId <= 0) return res.status(400).send('Invalid page id');
+      if (scheduleStartAt && scheduleEndAt && new Date(`${scheduleStartAt.replace(' ', 'T')}Z`) > new Date(`${scheduleEndAt.replace(' ', 'T')}Z`)) {
+        return res.status(400).send('Schedule end must be after schedule start');
+      }
       if (type === 'image' && dataObj && !String(dataObj.alt || '').trim()) {
         const localPath = normalizeLocalAssetPath(dataObj.src);
         if (localPath) {
@@ -3324,7 +3531,7 @@ function createApp(passedConfig) {
 
       let blockId = id;
       if (id > 0) {
-        await run('UPDATE blocks SET page_id = ?, type = ?, data = ?, order_index = ?, is_visible = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ? WHERE id = ?', [
+        await run('UPDATE blocks SET page_id = ?, type = ?, data = ?, order_index = ?, is_visible = ?, access_password_hash = ?, is_age_restricted = ?, is_spoiler = ?, schedule_start_at = ?, schedule_end_at = ?, targeting_rules = ? WHERE id = ?', [
           pageId,
           type,
           JSON.stringify(dataObj),
@@ -3333,6 +3540,9 @@ function createApp(passedConfig) {
           accessPasswordHash || null,
           isAgeRestricted,
           isSpoiler,
+          scheduleStartAt || null,
+          scheduleEndAt || null,
+          targetingRulesJson,
           id
         ]);
       } else {
@@ -3341,8 +3551,20 @@ function createApp(passedConfig) {
           order = Number(maxRow?.max_order || 0) + 1;
         }
         const insertResult = await runResult(
-          'INSERT INTO blocks (page_id, type, data, order_index, is_visible, access_password_hash, is_age_restricted, is_spoiler) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [pageId, type, JSON.stringify(dataObj), order, visible, accessPasswordHash || null, isAgeRestricted, isSpoiler]
+          'INSERT INTO blocks (page_id, type, data, order_index, is_visible, access_password_hash, is_age_restricted, is_spoiler, schedule_start_at, schedule_end_at, targeting_rules) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          [
+            pageId,
+            type,
+            JSON.stringify(dataObj),
+            order,
+            visible,
+            accessPasswordHash || null,
+            isAgeRestricted,
+            isSpoiler,
+            scheduleStartAt || null,
+            scheduleEndAt || null,
+            targetingRulesJson
+          ]
         );
         blockId = Number(insertResult.insertId || 0);
       }
@@ -3986,5 +4208,8 @@ module.exports = {
   isSocialPreviewUserAgent,
   sanitizeSettingValue,
   parseThemeTemplateInput,
-  buildThemeTemplatePayload
+  buildThemeTemplatePayload,
+  sanitizeTargetingRules,
+  normalizeScheduleInputToUtc,
+  formatScheduleForInput
 };

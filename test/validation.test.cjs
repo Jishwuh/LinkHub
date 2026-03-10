@@ -15,7 +15,10 @@ const {
   isSocialPreviewUserAgent,
   sanitizeSettingValue,
   parseThemeTemplateInput,
-  buildThemeTemplatePayload
+  buildThemeTemplatePayload,
+  sanitizeTargetingRules,
+  normalizeScheduleInputToUtc,
+  formatScheduleForInput
 } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
@@ -191,4 +194,27 @@ test('buildThemeTemplatePayload emits v1 schema and sanitized settings payload',
   assert.equal(payload.settings.background_mode, 'gradient');
   assert.equal(payload.settings.link_layout, 'grid');
   assert.equal('bad_key' in payload.settings, false);
+});
+
+test('sanitizeTargetingRules normalizes rule lists and query constraints', () => {
+  const rules = sanitizeTargetingRules({
+    devices: 'mobile,desktop,unknown,bad',
+    countries: 'us,CA,xx,123',
+    referrer_contains: 'google.com, https://x.com',
+    query: { key: 'utm_source', value: 'instagram' }
+  });
+
+  assert.deepEqual(rules.devices, ['mobile', 'desktop', 'unknown']);
+  assert.deepEqual(rules.countries, ['US', 'CA', 'XX']);
+  assert.deepEqual(rules.referrer_contains, ['google.com', 'x.com']);
+  assert.deepEqual(rules.query, { key: 'utm_source', value: 'instagram' });
+});
+
+test('schedule date helpers convert and format datetime values', () => {
+  const normalized = normalizeScheduleInputToUtc('2026-03-10T15:45');
+  assert.match(normalized, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:00$/);
+  assert.equal(normalizeScheduleInputToUtc('not-a-date'), '');
+
+  const display = formatScheduleForInput('2026-03-10 15:45:00');
+  assert.match(display, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
 });
