@@ -1017,6 +1017,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return 'any';
     };
 
+    const modalKeyForCard = card => {
+      const id = String(card?.id || '').trim();
+      if (id === 'link-modal') return 'link';
+      if (id === 'block-modal') return 'block';
+      if (id === 'redirect-modal') return 'redirect';
+      return '';
+    };
+
     const prettyBytes = bytes => {
       const value = Math.max(0, Number(bytes || 0));
       if (!Number.isFinite(value) || value <= 0) return '0 B';
@@ -1543,10 +1551,12 @@ document.addEventListener('DOMContentLoaded', () => {
       const altTargetSelector = String(button?.dataset?.assetAltTarget || '').trim();
       const altInput = altTargetSelector ? $(altTargetSelector) : null;
       const expectedKind = String(button?.dataset?.assetKind || '').trim().toLowerCase() || guessKindForTarget(targetSelector);
+      const sourceModalKey = modalKeyForCard(button.closest('.modal-card'));
       state.pickerTarget = {
         input,
         altInput,
-        kind: ['image', 'video'].includes(expectedKind) ? expectedKind : 'any'
+        kind: ['image', 'video'].includes(expectedKind) ? expectedKind : 'any',
+        sourceModalKey
       };
 
       if (pickerTitleEl) pickerTitleEl.textContent = `Select Asset for ${input.name || input.id || 'field'}`;
@@ -1736,8 +1746,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state.pickerTarget.altInput.dispatchEvent(new Event('input', { bubbles: true }));
             state.pickerTarget.altInput.dispatchEvent(new Event('change', { bubbles: true }));
           }
-
-          modal.close();
+          const sourceModalKey = String(state.pickerTarget.sourceModalKey || '').trim();
+          if (sourceModalKey) modal.open(sourceModalKey);
+          else modal.close();
           showToast('Asset inserted');
         }
       } catch (error) {
@@ -2538,6 +2549,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const buttonUrlEl = $('#block-button-url');
     const buttonStyleEl = $('#block-button-style');
     const buttonNewTabEl = $('#block-button-new-tab');
+    const imageAssetIdEl = $('#block-image-asset-id');
     const imageSrcEl = $('#block-image-src');
     const imageAltEl = $('#block-image-alt');
     const imageCaptionEl = $('#block-image-caption');
@@ -2557,6 +2569,31 @@ document.addEventListener('DOMContentLoaded', () => {
       } catch {
         return {};
       }
+    };
+
+    const getImageAssetOptionByPath = pathValue => {
+      if (!imageAssetIdEl) return null;
+      const targetPath = String(pathValue || '').trim();
+      if (!targetPath) return null;
+      return Array.from(imageAssetIdEl.options).find(option => String(option.dataset.path || '').trim() === targetPath) || null;
+    };
+
+    const applySelectedImageAsset = ({ applyAltWhenBlank = true } = {}) => {
+      if (!imageAssetIdEl) return;
+      const selectedOption = imageAssetIdEl.options[imageAssetIdEl.selectedIndex];
+      if (!selectedOption) return;
+      const selectedPath = String(selectedOption.dataset.path || '').trim();
+      const selectedAlt = String(selectedOption.dataset.alt || '').trim();
+      if (selectedPath && imageSrcEl) imageSrcEl.value = selectedPath;
+      if (applyAltWhenBlank && selectedAlt && imageAltEl && !String(imageAltEl.value || '').trim()) {
+        imageAltEl.value = selectedAlt;
+      }
+    };
+
+    const syncImageAssetSelectorFromSrc = () => {
+      if (!imageAssetIdEl || !imageSrcEl) return;
+      const match = getImageAssetOptionByPath(imageSrcEl.value);
+      imageAssetIdEl.value = match ? match.value : '';
     };
 
     const blockSummary = (type, data) => {
@@ -2650,6 +2687,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (buttonUrlEl) buttonUrlEl.value = '';
       if (buttonStyleEl) buttonStyleEl.value = 'solid';
       if (buttonNewTabEl) buttonNewTabEl.checked = true;
+      if (imageAssetIdEl) imageAssetIdEl.value = '';
       if (imageSrcEl) imageSrcEl.value = '';
       if (imageAltEl) imageAltEl.value = '';
       if (imageCaptionEl) imageCaptionEl.value = '';
@@ -2692,6 +2730,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const buildSavePayload = (item, overrides = {}) => {
       const block = blockFromDataset(item);
       const data = block.data_obj || {};
+      const imageSrcValue = overrides.image_src ?? data.src ?? '';
+      const explicitImageAssetId = overrides.image_asset_id == null ? '' : String(overrides.image_asset_id).trim();
+      const matchedImageAssetOption = getImageAssetOptionByPath(imageSrcValue);
+      const imageAssetIdValue = explicitImageAssetId || (matchedImageAssetOption ? String(matchedImageAssetOption.value || '') : '');
       return {
         _csrf: csrfToken,
         id: block.id,
@@ -2710,7 +2752,8 @@ document.addEventListener('DOMContentLoaded', () => {
         button_url: overrides.button_url ?? data.url ?? '',
         button_style: overrides.button_style ?? data.style ?? 'solid',
         button_new_tab: overrides.button_new_tab == null ? (data.new_tab === 0 ? 0 : 1) : asBoolean(overrides.button_new_tab) ? 1 : 0,
-        image_src: overrides.image_src ?? data.src ?? '',
+        image_asset_id: imageAssetIdValue,
+        image_src: imageSrcValue,
         image_alt: overrides.image_alt ?? data.alt ?? '',
         image_caption: overrides.image_caption ?? data.caption ?? '',
         embed_title: overrides.embed_title ?? data.title ?? '',
@@ -2746,10 +2789,11 @@ document.addEventListener('DOMContentLoaded', () => {
       shell.className = 'inline-edit-shell';
 
       const input = document.createElement('input');
-      input.type = field.includes('url') || field === 'image_src' ? 'url' : 'text';
+      input.type = field.includes('url') ? 'url' : 'text';
       input.value = initialValue;
       input.required = true;
       if (input.type === 'url') input.placeholder = 'https://...';
+      if (field === 'image_src') input.placeholder = 'https://... or /static/uploads/...';
       shell.appendChild(input);
 
       const actions = document.createElement('div');
@@ -2937,6 +2981,10 @@ document.addEventListener('DOMContentLoaded', () => {
       if (buttonUrlEl) buttonUrlEl.value = String(data.url || '');
       if (buttonStyleEl) buttonStyleEl.value = String(data.style || 'solid');
       if (buttonNewTabEl) buttonNewTabEl.checked = data.new_tab !== 0;
+      if (imageAssetIdEl) {
+        const matched = getImageAssetOptionByPath(String(data.src || ''));
+        imageAssetIdEl.value = matched ? String(matched.value || '') : '';
+      }
       if (imageSrcEl) imageSrcEl.value = String(data.src || '');
       if (imageAltEl) imageAltEl.value = String(data.alt || '');
       if (imageCaptionEl) imageCaptionEl.value = String(data.caption || '');
@@ -2966,6 +3014,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     createBtn.addEventListener('click', openCreateModal);
     typeEl?.addEventListener('change', () => setTypeVisibility(typeEl.value || 'heading'));
+    imageAssetIdEl?.addEventListener('change', () => {
+      applySelectedImageAsset({ applyAltWhenBlank: true });
+    });
+    imageSrcEl?.addEventListener('input', syncImageAssetSelectorFromSrc);
 
     form.addEventListener('submit', async event => {
       event.preventDefault();
@@ -2991,6 +3043,7 @@ document.addEventListener('DOMContentLoaded', () => {
         button_url: buttonUrlEl?.value || '',
         button_style: buttonStyleEl?.value || 'solid',
         button_new_tab: buttonNewTabEl?.checked ? 1 : 0,
+        image_asset_id: imageAssetIdEl?.value || '',
         image_src: imageSrcEl?.value || '',
         image_alt: imageAltEl?.value || '',
         image_caption: imageCaptionEl?.value || '',

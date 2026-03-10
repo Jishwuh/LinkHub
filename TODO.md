@@ -81,5 +81,5 @@
 
 ## Quick Fixes
 
-- [] **Media Libary Input**
-  - [] Allow image blocks to be set to an item in the library. Have POC, need to properly implement to use URL of image/auto-set file path.
+- [x] **Media Library Input**
+  - [x] Allow image blocks to be set to an item in the library. Properly implemented to resolve and save the library asset local URL/path, with alt fallback.

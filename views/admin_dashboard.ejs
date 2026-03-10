@@ -95,7 +95,7 @@
               <label>
                 Background image URL
                 <div class="asset-inline-input">
-                  <input id="settings-background-image-url" name="background_image_url" type="url" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg">
+                  <input id="settings-background-image-url" name="background_image_url" type="text" value="<%= settings.background_image_url || '' %>" placeholder="https://.../image.jpg or /static/uploads/...">
                   <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-background-image-url" data-asset-kind="image">Library</button>
                 </div>
               </label>
@@ -105,7 +105,7 @@
               <label>
                 Background video URL
                 <div class="asset-inline-input">
-                  <input id="settings-background-video-url" name="background_video_url" type="url" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4">
+                  <input id="settings-background-video-url" name="background_video_url" type="text" value="<%= settings.background_video_url || '' %>" placeholder="https://.../video.mp4 or /static/uploads/...">
                   <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-background-video-url" data-asset-kind="video">Library</button>
                 </div>
               </label>
@@ -245,7 +245,7 @@
               <label>
                 OG image URL
                 <div class="asset-inline-input">
-                  <input id="settings-og-image-url" name="og_image" type="url" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg">
+                  <input id="settings-og-image-url" name="og_image" type="text" value="<%= settings.og_image || '' %>" placeholder="https://.../image.jpg or /static/uploads/...">
                   <button type="button" class="modal-inline-action asset-target-btn" data-asset-target="#settings-og-image-url" data-asset-kind="image">Library</button>
                 </div>
               </label>
@@ -1039,10 +1039,27 @@
           </div>
 
           <div class="modal-grid modal-grid-2 block-type-group" data-block-type="image" hidden>
+            <label class="modal-field modal-field-span2">
+              <span class="modal-label">Library image</span>
+              <select name="image_asset_id" id="block-image-asset-id">
+                <option value="">Select from media library (optional)</option>
+                <% if (assets && assets.length) { %>
+                  <% assets.filter(a => a.media_type === 'image').forEach(a => { %>
+                    <option
+                      value="<%= a.id %>"
+                      data-path="<%= a.storage_path %>"
+                      data-alt="<%= a.alt_text || '' %>">
+                      <%= a.label || a.storage_path %>
+                    </option>
+                  <% }) %>
+                <% } %>
+              </select>
+              <p class="modal-hint">Selecting a library image auto-fills the block image URL with its local file path.</p>
+            </label>
             <label class="modal-field">
               <span class="modal-label">Image URL</span>
               <div class="asset-inline-input">
-                <input name="image_src" id="block-image-src" type="url" placeholder="https://.../image.jpg">
+                <input name="image_src" id="block-image-src" type="text" placeholder="https://.../image.jpg or /static/uploads/...">
                 <button
                   type="button"
                   class="modal-inline-action asset-target-btn"

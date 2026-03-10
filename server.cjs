@@ -2905,7 +2905,20 @@ function createApp(passedConfig) {
       const isSpoiler = parseBoolean(req.body?.is_spoiler, false) ? 1 : 0;
       const accessPasswordRaw = sanitizeAccessPassword(req.body?.access_password);
       const clearAccessPassword = parseBoolean(req.body?.clear_access_password, false);
-      let dataObj = normalizeBlockDataFromBody(type, req.body);
+      const imageAssetId = Number.parseInt(String(req.body?.image_asset_id || ''), 10);
+      const blockBody = { ...(req.body || {}) };
+      if (type === 'image' && Number.isInteger(imageAssetId) && imageAssetId > 0) {
+        const selectedAsset = await get('SELECT storage_path, alt_text FROM assets WHERE id = ? AND media_type = ? LIMIT 1', [imageAssetId, 'image']);
+        const selectedPath = normalizeLocalAssetPath(selectedAsset?.storage_path || '');
+        if (selectedPath) {
+          blockBody.image_src = selectedPath;
+          const altFromBody = sanitizeText(blockBody.image_alt || '', 180);
+          if (!altFromBody) {
+            blockBody.image_alt = sanitizeText(selectedAsset?.alt_text || '', 180);
+          }
+        }
+      }
+      let dataObj = normalizeBlockDataFromBody(type, blockBody);
 
       if (!type) return res.status(400).send('Valid block type is required');
       if (!dataObj) return res.status(400).send('Block data is invalid for selected type');
