@@ -14,6 +14,7 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
 - QR code generator in admin (profile, links, blocks, redirects)
 - Auto link enrichment in admin (URL -> suggested title, icon, preview image)
 - Asset manager with reusable media library (images/videos), alt text metadata, and in-form picker buttons
+- Theme template gallery with one-click presets and JSON import/export
 - Visit and like counters
 - Open Graph / social share metadata editor
 - Private content controls (password gates, 18+ verification, spoiler reveal)
@@ -84,6 +85,10 @@ LinkHub is a self-hosted link-in-bio app with an admin dashboard, short redirect
   - Per-link/per-block 18+ toggles + spoiler reveal toggles
   - Direct unlock page flow for protected redirects/outbound links
   - Public unlock and age-verify modals without full-page refresh for on-page items
+- Theme system + templates:
+  - Theme token controls in Design tab (`surface`, `text`, `muted`, `border`, spacing scale, radius scale)
+  - Template gallery with one-click apply presets: `Minimal`, `Glass`, `Neon`, `Creator`, `Business`, `Dark`
+  - Template JSON export (`/admin/theme/export`) and import (`/admin/theme/import`) with schema/field validation
 
 ## Customization Studio
 
@@ -189,6 +194,55 @@ Analytics is available in **Admin -> Analytics** with selectable date windows.
   - Fallback avatar emoji
   - Like button emoji
   - Share button emoji
+
+### Theme Templates (JSON)
+
+Available in **Admin -> Site Settings -> Design**.
+
+- CSS-variable theme tokens:
+  - `theme_color` (accent)
+  - `theme_surface_color`
+  - `theme_text_color`
+  - `theme_muted_color`
+  - `theme_border_color`
+  - `theme_spacing_scale`
+  - `theme_radius_scale`
+- One-click preset gallery:
+  - `Minimal`, `Glass`, `Neon`, `Creator`, `Business`, `Dark`
+- Import/export:
+  - `Export JSON` downloads the current theme template
+  - `Import JSON` validates and applies only supported LinkHub theme keys
+  - Schema used: `linkhub-theme-v1`
+
+Example exported template:
+
+```json
+{
+  "schema": "linkhub-theme-v1",
+  "name": "My Theme",
+  "exported_at": "2026-03-10T00:00:00.000Z",
+  "settings": {
+    "background_mode": "gradient",
+    "bg_youtube_id": "",
+    "background_gradient": "midnight",
+    "background_pattern": "none",
+    "overlay_opacity": "0.45",
+    "theme_color": "#6ea8fe",
+    "theme_surface_color": "#12161d",
+    "theme_text_color": "#f5f7fb",
+    "theme_muted_color": "#b4bdca",
+    "theme_border_color": "#5f6b7c",
+    "theme_spacing_scale": "1",
+    "theme_radius_scale": "0.9",
+    "link_layout": "list",
+    "font_theme": "modern",
+    "button_style": "rounded",
+    "animation_style": "none",
+    "like_emoji": "❤",
+    "share_emoji": "🔗"
+  }
+}
+```
 
 ## Tech Stack
 

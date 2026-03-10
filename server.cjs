@@ -57,6 +57,8 @@ const ALLOWED_BUTTON_STYLES = ['rounded', 'pill', 'square', 'glass'];
 const ALLOWED_ANIMATION_STYLES = ['none', 'subtle', 'energetic'];
 const ALLOWED_GRADIENT_PRESETS = ['sunset', 'ocean', 'forest', 'neon', 'midnight'];
 const ALLOWED_PATTERN_PRESETS = ['none', 'grid', 'dots', 'noise'];
+const THEME_TEMPLATE_SCHEMA = 'linkhub-theme-v1';
+const THEME_PRESET_KEYS = ['minimal', 'glass', 'neon', 'creator', 'business', 'dark'];
 const BLOCK_TYPES = ['heading', 'rich_text', 'button_link', 'image', 'embed', 'links_cluster'];
 const BLOCK_HEADING_LEVELS = ['h1', 'h2', 'h3'];
 const BLOCK_BUTTON_STYLES = ['solid', 'outline'];
@@ -65,6 +67,219 @@ const ACCESS_CONTEXT_TYPES = ['page', 'link', 'block', 'redirect'];
 const MIN_ACCESS_PASSWORD_LENGTH = 6;
 const MAX_ACCESS_PASSWORD_LENGTH = 128;
 const AGE_VERIFY_UNLOCK_MAX_AGE_MS = 2 * 60 * 1000;
+const ADMIN_SETTINGS_ALLOWED_KEYS = [
+  'site_title',
+  'bg_youtube_id',
+  'background_mode',
+  'background_image_url',
+  'background_video_url',
+  'background_gradient',
+  'background_pattern',
+  'overlay_opacity',
+  'background_blur',
+  'particles_density',
+  'particles_speed',
+  'footer_html',
+  'display_name',
+  'handle',
+  'bio',
+  'avatar_emoji',
+  'like_emoji',
+  'share_emoji',
+  'page_title',
+  'site_url',
+  'og_image',
+  'og_description',
+  'page_is_age_restricted',
+  'theme_color',
+  'theme_surface_color',
+  'theme_text_color',
+  'theme_muted_color',
+  'theme_border_color',
+  'theme_spacing_scale',
+  'theme_radius_scale',
+  'link_layout',
+  'font_theme',
+  'button_style',
+  'animation_style'
+];
+const THEME_TEMPLATE_SETTING_KEYS = [
+  'background_mode',
+  'bg_youtube_id',
+  'background_image_url',
+  'background_video_url',
+  'background_gradient',
+  'background_pattern',
+  'overlay_opacity',
+  'background_blur',
+  'particles_density',
+  'particles_speed',
+  'theme_color',
+  'theme_surface_color',
+  'theme_text_color',
+  'theme_muted_color',
+  'theme_border_color',
+  'theme_spacing_scale',
+  'theme_radius_scale',
+  'link_layout',
+  'font_theme',
+  'button_style',
+  'animation_style',
+  'like_emoji',
+  'share_emoji'
+];
+const THEME_PRESET_MAP = {
+  minimal: {
+    background_mode: 'gradient',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'midnight',
+    background_pattern: 'none',
+    overlay_opacity: '0.45',
+    background_blur: '6',
+    particles_density: '80',
+    particles_speed: '1',
+    theme_color: '#6ea8fe',
+    theme_surface_color: '#12161d',
+    theme_text_color: '#f5f7fb',
+    theme_muted_color: '#b4bdca',
+    theme_border_color: '#5f6b7c',
+    theme_spacing_scale: '1',
+    theme_radius_scale: '0.9',
+    link_layout: 'list',
+    font_theme: 'modern',
+    button_style: 'rounded',
+    animation_style: 'none',
+    like_emoji: '❤',
+    share_emoji: '🔗'
+  },
+  glass: {
+    background_mode: 'gradient',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'ocean',
+    background_pattern: 'grid',
+    overlay_opacity: '0.34',
+    background_blur: '10',
+    particles_density: '80',
+    particles_speed: '1',
+    theme_color: '#91d6ff',
+    theme_surface_color: '#163247',
+    theme_text_color: '#f3fbff',
+    theme_muted_color: '#b7d1de',
+    theme_border_color: '#9fd0ed',
+    theme_spacing_scale: '1.06',
+    theme_radius_scale: '1.2',
+    link_layout: 'list',
+    font_theme: 'rounded',
+    button_style: 'glass',
+    animation_style: 'subtle',
+    like_emoji: '💙',
+    share_emoji: '🧊'
+  },
+  neon: {
+    background_mode: 'gradient',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'neon',
+    background_pattern: 'dots',
+    overlay_opacity: '0.58',
+    background_blur: '8',
+    particles_density: '110',
+    particles_speed: '1.4',
+    theme_color: '#ff2ea6',
+    theme_surface_color: '#1d1238',
+    theme_text_color: '#ffffff',
+    theme_muted_color: '#d6c9f4',
+    theme_border_color: '#f367d1',
+    theme_spacing_scale: '1.12',
+    theme_radius_scale: '1.3',
+    link_layout: 'grid',
+    font_theme: 'mono',
+    button_style: 'pill',
+    animation_style: 'energetic',
+    like_emoji: '⚡',
+    share_emoji: '🚀'
+  },
+  creator: {
+    background_mode: 'particles',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'sunset',
+    background_pattern: 'none',
+    overlay_opacity: '0.5',
+    background_blur: '6',
+    particles_density: '120',
+    particles_speed: '1.2',
+    theme_color: '#ff7a59',
+    theme_surface_color: '#2a1f2f',
+    theme_text_color: '#fff7f2',
+    theme_muted_color: '#d6b9a7',
+    theme_border_color: '#d97f61',
+    theme_spacing_scale: '1.08',
+    theme_radius_scale: '1.2',
+    link_layout: 'grid',
+    font_theme: 'rounded',
+    button_style: 'rounded',
+    animation_style: 'energetic',
+    like_emoji: '🔥',
+    share_emoji: '📣'
+  },
+  business: {
+    background_mode: 'gradient',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'forest',
+    background_pattern: 'grid',
+    overlay_opacity: '0.44',
+    background_blur: '5',
+    particles_density: '80',
+    particles_speed: '1',
+    theme_color: '#0ea5a3',
+    theme_surface_color: '#112225',
+    theme_text_color: '#f4fbfb',
+    theme_muted_color: '#b2cbcb',
+    theme_border_color: '#699b9e',
+    theme_spacing_scale: '0.96',
+    theme_radius_scale: '0.85',
+    link_layout: 'table',
+    font_theme: 'editorial',
+    button_style: 'square',
+    animation_style: 'subtle',
+    like_emoji: '✅',
+    share_emoji: '📎'
+  },
+  dark: {
+    background_mode: 'gradient',
+    bg_youtube_id: '',
+    background_image_url: '',
+    background_video_url: '',
+    background_gradient: 'midnight',
+    background_pattern: 'noise',
+    overlay_opacity: '0.62',
+    background_blur: '9',
+    particles_density: '80',
+    particles_speed: '1',
+    theme_color: '#7c86ff',
+    theme_surface_color: '#0f1117',
+    theme_text_color: '#eceef5',
+    theme_muted_color: '#a5acbc',
+    theme_border_color: '#4e5669',
+    theme_spacing_scale: '1',
+    theme_radius_scale: '1',
+    link_layout: 'list',
+    font_theme: 'modern',
+    button_style: 'rounded',
+    animation_style: 'subtle',
+    like_emoji: '🖤',
+    share_emoji: '🌙'
+  }
+};
 let countryNameResolver = null;
 try {
   countryNameResolver = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -192,6 +407,155 @@ function sanitizeEmoji(value, fallback) {
   const raw = String(value || '').trim();
   if (!raw) return fallback;
   return Array.from(raw).slice(0, 4).join('');
+}
+
+function sanitizeSettingValue(key, rawValue) {
+  let value = String(rawValue ?? '');
+
+  if (key === 'bio' || key === 'og_description') {
+    return sanitizeRichText(value);
+  }
+  if (key === 'footer_html') {
+    return sanitizeFooterHtml(value);
+  }
+  if (key === 'site_url') {
+    return normalizeHttpUrl(value);
+  }
+  if (key === 'og_image') {
+    return normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
+  }
+  if (key === 'page_is_age_restricted') {
+    return parseBoolean(rawValue, false) ? '1' : '0';
+  }
+  if (key === 'background_image_url' || key === 'background_video_url') {
+    return normalizeMediaAsset(value);
+  }
+  if (key === 'theme_color') {
+    return sanitizeColorHex(value) || '#ff4d6d';
+  }
+  if (key === 'theme_surface_color') {
+    return sanitizeColorHex(value) || '#161a22';
+  }
+  if (key === 'theme_text_color') {
+    return sanitizeColorHex(value) || '#f5f5f5';
+  }
+  if (key === 'theme_muted_color') {
+    return sanitizeColorHex(value) || '#c9c9c9';
+  }
+  if (key === 'theme_border_color') {
+    return sanitizeColorHex(value) || '#9aa2b2';
+  }
+  if (key === 'theme_spacing_scale') {
+    return String(sanitizeNumberRange(value, 0.75, 1.5, 1, 2));
+  }
+  if (key === 'theme_radius_scale') {
+    return String(sanitizeNumberRange(value, 0.6, 1.8, 1, 2));
+  }
+  if (key === 'bg_youtube_id') {
+    return String(value).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
+  }
+  if (key === 'background_mode') {
+    return sanitizeChoice(value, ALLOWED_BACKGROUND_MODES, 'youtube');
+  }
+  if (key === 'background_gradient') {
+    return sanitizeChoice(value, ALLOWED_GRADIENT_PRESETS, 'sunset');
+  }
+  if (key === 'background_pattern') {
+    return sanitizeChoice(value, ALLOWED_PATTERN_PRESETS, 'none');
+  }
+  if (key === 'link_layout') {
+    return sanitizeChoice(value, ALLOWED_LINK_LAYOUTS, 'list');
+  }
+  if (key === 'font_theme') {
+    return sanitizeChoice(value, ALLOWED_FONT_THEMES, 'modern');
+  }
+  if (key === 'button_style') {
+    return sanitizeChoice(value, ALLOWED_BUTTON_STYLES, 'rounded');
+  }
+  if (key === 'animation_style') {
+    return sanitizeChoice(value, ALLOWED_ANIMATION_STYLES, 'subtle');
+  }
+  if (key === 'overlay_opacity') {
+    return String(sanitizeNumberRange(value, 0, 0.9, 0.55, 2));
+  }
+  if (key === 'background_blur') {
+    return String(sanitizeNumberRange(value, 0, 20, 8, 1));
+  }
+  if (key === 'particles_density') {
+    return String(sanitizeNumberRange(value, 20, 180, 80, 0));
+  }
+  if (key === 'particles_speed') {
+    return String(sanitizeNumberRange(value, 0.2, 3, 1, 2));
+  }
+  if (key === 'avatar_emoji') {
+    return sanitizeEmoji(value, '🙂');
+  }
+  if (key === 'like_emoji') {
+    return sanitizeEmoji(value, '❤');
+  }
+  if (key === 'share_emoji') {
+    return sanitizeEmoji(value, '🔗');
+  }
+  return sanitizeText(value, 255);
+}
+
+function sanitizeSettingsMap(input, allowedKeys) {
+  const out = {};
+  const source = input && typeof input === 'object' ? input : {};
+  for (const key of allowedKeys) {
+    if (!(key in source)) continue;
+    out[key] = sanitizeSettingValue(key, source[key]);
+  }
+  return out;
+}
+
+async function upsertSettingsValues(runFn, entries) {
+  const pairs = Object.entries(entries || {}).filter(([key]) => typeof key === 'string' && key);
+  for (const [key, value] of pairs) {
+    await runFn('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', [key, value]);
+  }
+  return pairs.length;
+}
+
+function buildThemeTemplatePayload(name, rawSettings) {
+  const sanitized = sanitizeSettingsMap(rawSettings, THEME_TEMPLATE_SETTING_KEYS);
+  return {
+    schema: THEME_TEMPLATE_SCHEMA,
+    name: sanitizeText(name || 'Custom Theme', 80) || 'Custom Theme',
+    exported_at: new Date().toISOString(),
+    settings: sanitized
+  };
+}
+
+function parseThemeTemplateInput(rawInput) {
+  const source = rawInput && typeof rawInput === 'object' ? rawInput : {};
+  const schema = sanitizeText(source.schema || source.version || '', 64);
+  if (schema && schema !== THEME_TEMPLATE_SCHEMA) {
+    throw new Error(`Unsupported theme schema. Expected ${THEME_TEMPLATE_SCHEMA}`);
+  }
+  const settingsRaw =
+    source.settings && typeof source.settings === 'object' && !Array.isArray(source.settings)
+      ? source.settings
+      : source;
+  const sanitizedSettings = sanitizeSettingsMap(settingsRaw, THEME_TEMPLATE_SETTING_KEYS);
+  if (!Object.keys(sanitizedSettings).length) {
+    throw new Error('Template JSON does not contain any valid theme settings.');
+  }
+  const name = sanitizeText(source.name || 'Imported Theme', 80) || 'Imported Theme';
+  return {
+    name,
+    settings: sanitizedSettings
+  };
+}
+
+function pickSettingsSubset(settings, keys) {
+  const out = {};
+  const source = settings && typeof settings === 'object' ? settings : {};
+  for (const key of keys) {
+    if (!(key in source)) continue;
+    out[key] = source[key];
+  }
+  return out;
 }
 
 function parseCookieMap(cookieHeader) {
@@ -1808,6 +2172,12 @@ function createApp(passedConfig) {
       background_blur: sanitizeNumberRange(settings.background_blur, 0, 20, 8, 1),
       particles_density: sanitizeNumberRange(settings.particles_density, 20, 180, 80, 0),
       particles_speed: sanitizeNumberRange(settings.particles_speed, 0.2, 3, 1, 2),
+      theme_surface_color: sanitizeColorHex(settings.theme_surface_color) || '#161a22',
+      theme_text_color: sanitizeColorHex(settings.theme_text_color) || '#f5f5f5',
+      theme_muted_color: sanitizeColorHex(settings.theme_muted_color) || '#c9c9c9',
+      theme_border_color: sanitizeColorHex(settings.theme_border_color) || '#9aa2b2',
+      theme_spacing_scale: sanitizeNumberRange(settings.theme_spacing_scale, 0.75, 1.5, 1, 2),
+      theme_radius_scale: sanitizeNumberRange(settings.theme_radius_scale, 0.6, 1.8, 1, 2),
       avatar_emoji: sanitizeEmoji(settings.avatar_emoji, '🙂'),
       like_emoji: sanitizeEmoji(settings.like_emoji, '❤'),
       share_emoji: sanitizeEmoji(settings.share_emoji, '🔗'),
@@ -2029,6 +2399,12 @@ function createApp(passedConfig) {
       ['page_access_password_hash', ''],
       ['page_is_age_restricted', '0'],
       ['theme_color', '#ff4d6d'],
+      ['theme_surface_color', '#161a22'],
+      ['theme_text_color', '#f5f5f5'],
+      ['theme_muted_color', '#c9c9c9'],
+      ['theme_border_color', '#9aa2b2'],
+      ['theme_spacing_scale', '1'],
+      ['theme_radius_scale', '1'],
       ['link_layout', 'list'],
       ['font_theme', 'modern'],
       ['button_style', 'rounded'],
@@ -3060,90 +3436,10 @@ function createApp(passedConfig) {
     uploadFields,
     requireCsrf,
     asyncHandler(async (req, res) => {
-      const allowedKeys = [
-        'site_title',
-        'bg_youtube_id',
-        'background_mode',
-        'background_image_url',
-        'background_video_url',
-        'background_gradient',
-        'background_pattern',
-        'overlay_opacity',
-        'background_blur',
-        'particles_density',
-        'particles_speed',
-        'footer_html',
-        'display_name',
-        'handle',
-        'bio',
-        'avatar_emoji',
-        'like_emoji',
-        'share_emoji',
-        'page_title',
-        'site_url',
-        'og_image',
-        'og_description',
-        'page_is_age_restricted',
-        'theme_color',
-        'link_layout',
-        'font_theme',
-        'button_style',
-        'animation_style'
-      ];
-
       const existingSettings = await getSettingsMap();
-      for (const key of allowedKeys) {
+      for (const key of ADMIN_SETTINGS_ALLOWED_KEYS) {
         if (!(key in req.body)) continue;
-
-        let value = String(req.body[key] || '');
-        if (key === 'bio' || key === 'og_description') {
-          value = sanitizeRichText(value);
-        } else if (key === 'footer_html') {
-          value = sanitizeFooterHtml(value);
-        } else if (key === 'site_url') {
-          value = normalizeHttpUrl(value);
-        } else if (key === 'og_image') {
-          value = normalizeHttpUrl(value) || normalizeLocalAssetPath(value);
-        } else if (key === 'page_is_age_restricted') {
-          value = parseBoolean(value, false) ? '1' : '0';
-        } else if (key === 'background_image_url' || key === 'background_video_url') {
-          value = normalizeMediaAsset(value);
-        } else if (key === 'theme_color') {
-          value = sanitizeColorHex(value) || '#ff4d6d';
-        } else if (key === 'bg_youtube_id') {
-          value = String(value).trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 32);
-        } else if (key === 'background_mode') {
-          value = sanitizeChoice(value, ALLOWED_BACKGROUND_MODES, 'youtube');
-        } else if (key === 'background_gradient') {
-          value = sanitizeChoice(value, ALLOWED_GRADIENT_PRESETS, 'sunset');
-        } else if (key === 'background_pattern') {
-          value = sanitizeChoice(value, ALLOWED_PATTERN_PRESETS, 'none');
-        } else if (key === 'link_layout') {
-          value = sanitizeChoice(value, ALLOWED_LINK_LAYOUTS, 'list');
-        } else if (key === 'font_theme') {
-          value = sanitizeChoice(value, ALLOWED_FONT_THEMES, 'modern');
-        } else if (key === 'button_style') {
-          value = sanitizeChoice(value, ALLOWED_BUTTON_STYLES, 'rounded');
-        } else if (key === 'animation_style') {
-          value = sanitizeChoice(value, ALLOWED_ANIMATION_STYLES, 'subtle');
-        } else if (key === 'overlay_opacity') {
-          value = String(sanitizeNumberRange(value, 0, 0.9, 0.55, 2));
-        } else if (key === 'background_blur') {
-          value = String(sanitizeNumberRange(value, 0, 20, 8, 1));
-        } else if (key === 'particles_density') {
-          value = String(sanitizeNumberRange(value, 20, 180, 80, 0));
-        } else if (key === 'particles_speed') {
-          value = String(sanitizeNumberRange(value, 0.2, 3, 1, 2));
-        } else if (key === 'avatar_emoji') {
-          value = sanitizeEmoji(value, '🙂');
-        } else if (key === 'like_emoji') {
-          value = sanitizeEmoji(value, '❤');
-        } else if (key === 'share_emoji') {
-          value = sanitizeEmoji(value, '🔗');
-        } else {
-          value = sanitizeText(value, 255);
-        }
-
+        const value = sanitizeSettingValue(key, req.body[key]);
         await run('INSERT INTO settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)', [key, value]);
       }
 
@@ -3197,6 +3493,88 @@ function createApp(passedConfig) {
         return res.json({ ok: true, message: 'Changes have been saved' });
       }
       res.redirect('/admin');
+    })
+  );
+
+  app.get(
+    '/admin/theme/export',
+    requireAuth,
+    asyncHandler(async (req, res) => {
+      const settings = resolveUiSettings(await getSettingsMap());
+      const requestedName = sanitizeText(req.query?.name || '', 80) || 'LinkHub Theme';
+      const payload = buildThemeTemplatePayload(requestedName, settings);
+      const safeFileBase = sanitizeText(requestedName, 80)
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+      const fileName = `${safeFileBase || 'linkhub-theme'}.json`;
+      res.set('Content-Type', 'application/json; charset=utf-8');
+      res.set('Content-Disposition', `attachment; filename="${fileName}"`);
+      return res.send(JSON.stringify(payload, null, 2));
+    })
+  );
+
+  app.post(
+    '/admin/theme/preset',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      const preset = sanitizeChoice(req.body?.preset, THEME_PRESET_KEYS, '');
+      if (!preset) return res.status(400).send('Valid preset is required');
+      const presetSettings = THEME_PRESET_MAP[preset];
+      if (!presetSettings) return res.status(400).send('Preset not found');
+
+      const sanitizedSettings = sanitizeSettingsMap(presetSettings, THEME_TEMPLATE_SETTING_KEYS);
+      await upsertSettingsValues(run, sanitizedSettings);
+      const nextSettings = resolveUiSettings(await getSettingsMap());
+      const appliedSettings = pickSettingsSubset(nextSettings, THEME_TEMPLATE_SETTING_KEYS);
+      return res.json({
+        ok: true,
+        message: `Applied ${preset[0].toUpperCase()}${preset.slice(1)} preset`,
+        preset,
+        settings: appliedSettings
+      });
+    })
+  );
+
+  app.post(
+    '/admin/theme/import',
+    requireAuth,
+    requireCsrf,
+    asyncHandler(async (req, res) => {
+      let parsedInput = null;
+
+      if (typeof req.body?.template_json === 'string' && req.body.template_json.trim()) {
+        try {
+          parsedInput = JSON.parse(req.body.template_json);
+        } catch {
+          return res.status(400).send('Template JSON is invalid');
+        }
+      } else if (req.body && typeof req.body === 'object') {
+        parsedInput = req.body;
+      }
+
+      if (!parsedInput || typeof parsedInput !== 'object') {
+        return res.status(400).send('Template payload is required');
+      }
+
+      let template;
+      try {
+        template = parseThemeTemplateInput(parsedInput);
+      } catch (error) {
+        return res.status(400).send(error.message || 'Template JSON is invalid');
+      }
+
+      await upsertSettingsValues(run, template.settings);
+      const nextSettings = resolveUiSettings(await getSettingsMap());
+      const appliedSettings = pickSettingsSubset(nextSettings, THEME_TEMPLATE_SETTING_KEYS);
+      return res.json({
+        ok: true,
+        message: `Imported template: ${template.name}`,
+        name: template.name,
+        settings: appliedSettings
+      });
     })
   );
 
@@ -3605,5 +3983,8 @@ module.exports = {
   isValidAccessPassword,
   hasPasswordGate,
   buildAbsoluteAssetUrl,
-  isSocialPreviewUserAgent
+  isSocialPreviewUserAgent,
+  sanitizeSettingValue,
+  parseThemeTemplateInput,
+  buildThemeTemplatePayload
 };

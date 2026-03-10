@@ -26,10 +26,10 @@
 
 ## Next (Makes it feel “pro” fast)
 
-- [ ] **Themes + template gallery**
-  - [ ] Theme system using CSS variables (colors, fonts, spacing, radius)
-  - [ ] Template gallery in admin with one-click apply
-  - [ ] Theme presets: Minimal, Glass, Neon, Creator, Business, Dark
+- [x] **Themes + template gallery**
+  - [x] Theme system using CSS variables (colors, fonts, spacing, radius)
+  - [x] Template gallery in admin with one-click apply
+  - [x] Theme presets: Minimal, Glass, Neon, Creator, Business, Dark
 
 - [x] **Modern animations (optional + accessible)**
   - [x] Staggered entrance animation for blocks/links

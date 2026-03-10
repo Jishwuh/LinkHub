@@ -232,6 +232,108 @@
               <label>Like emoji<input name="like_emoji" value="<%= settings.like_emoji || '❤' %>"></label>
               <label>Share emoji<input name="share_emoji" value="<%= settings.share_emoji || '🔗' %>"></label>
             </div>
+            <hr class="settings-divider">
+            <h4>Theme Tokens</h4>
+            <p class="modal-hint">CSS-variable controls for color, spacing, and corner radius.</p>
+            <div class="grid">
+              <label>
+                Surface color
+                <div class="inline-color-picker">
+                  <input name="theme_surface_color" id="theme-surface-color" class="color-input" type="color" value="<%= settings.theme_surface_color || '#161a22' %>">
+                  <span id="theme-surface-color-preview" class="color-chip color-chip-lg" title="<%= settings.theme_surface_color || '#161a22' %>"></span>
+                </div>
+              </label>
+              <label>
+                Text color
+                <div class="inline-color-picker">
+                  <input name="theme_text_color" id="theme-text-color" class="color-input" type="color" value="<%= settings.theme_text_color || '#f5f5f5' %>">
+                  <span id="theme-text-color-preview" class="color-chip color-chip-lg" title="<%= settings.theme_text_color || '#f5f5f5' %>"></span>
+                </div>
+              </label>
+              <label>
+                Muted text color
+                <div class="inline-color-picker">
+                  <input name="theme_muted_color" id="theme-muted-color" class="color-input" type="color" value="<%= settings.theme_muted_color || '#c9c9c9' %>">
+                  <span id="theme-muted-color-preview" class="color-chip color-chip-lg" title="<%= settings.theme_muted_color || '#c9c9c9' %>"></span>
+                </div>
+              </label>
+              <label>
+                Border color
+                <div class="inline-color-picker">
+                  <input name="theme_border_color" id="theme-border-color" class="color-input" type="color" value="<%= settings.theme_border_color || '#9aa2b2' %>">
+                  <span id="theme-border-color-preview" class="color-chip color-chip-lg" title="<%= settings.theme_border_color || '#9aa2b2' %>"></span>
+                </div>
+              </label>
+              <label>
+                Spacing scale
+                <input name="theme_spacing_scale" id="theme-spacing-scale" type="number" min="0.75" max="1.5" step="0.05" value="<%= settings.theme_spacing_scale || 1 %>">
+              </label>
+              <label>
+                Radius scale
+                <input name="theme_radius_scale" id="theme-radius-scale" type="number" min="0.6" max="1.8" step="0.05" value="<%= settings.theme_radius_scale || 1 %>">
+              </label>
+            </div>
+            <hr class="settings-divider">
+            <h4>Template Gallery</h4>
+            <p class="modal-hint">Apply a starting style instantly, then tweak any setting.</p>
+            <div class="template-gallery-grid" id="theme-template-gallery">
+              <article class="template-card" data-preset="minimal">
+                <div class="template-preview template-preview-minimal"></div>
+                <div class="template-meta">
+                  <strong>Minimal</strong>
+                  <span>Clean and calm</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="minimal">Apply</button>
+              </article>
+              <article class="template-card" data-preset="glass">
+                <div class="template-preview template-preview-glass"></div>
+                <div class="template-meta">
+                  <strong>Glass</strong>
+                  <span>Soft translucent vibe</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="glass">Apply</button>
+              </article>
+              <article class="template-card" data-preset="neon">
+                <div class="template-preview template-preview-neon"></div>
+                <div class="template-meta">
+                  <strong>Neon</strong>
+                  <span>High-energy pop</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="neon">Apply</button>
+              </article>
+              <article class="template-card" data-preset="creator">
+                <div class="template-preview template-preview-creator"></div>
+                <div class="template-meta">
+                  <strong>Creator</strong>
+                  <span>Bold social look</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="creator">Apply</button>
+              </article>
+              <article class="template-card" data-preset="business">
+                <div class="template-preview template-preview-business"></div>
+                <div class="template-meta">
+                  <strong>Business</strong>
+                  <span>Structured and formal</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="business">Apply</button>
+              </article>
+              <article class="template-card" data-preset="dark">
+                <div class="template-preview template-preview-dark"></div>
+                <div class="template-meta">
+                  <strong>Dark</strong>
+                  <span>Modern dark base</span>
+                </div>
+                <button type="button" class="btn-secondary template-apply-btn" data-theme-preset="dark">Apply</button>
+              </article>
+            </div>
+            <hr class="settings-divider">
+            <h4>Template Import/Export</h4>
+            <p class="modal-hint">Export your current theme as JSON or import a saved template file.</p>
+            <div class="template-io-row">
+              <input type="file" id="theme-template-file" accept="application/json,.json">
+              <button type="button" id="theme-template-import-btn">Import JSON</button>
+              <button type="button" class="btn-secondary" id="theme-template-export-btn">Export JSON</button>
+            </div>
           </section>
 
           <section class="settings-panel" data-panel="share" hidden>

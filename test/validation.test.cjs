@@ -12,7 +12,10 @@ const {
   isValidAccessPassword,
   hasPasswordGate,
   buildAbsoluteAssetUrl,
-  isSocialPreviewUserAgent
+  isSocialPreviewUserAgent,
+  sanitizeSettingValue,
+  parseThemeTemplateInput,
+  buildThemeTemplatePayload
 } = require('../server.cjs');
 
 test('normalizeHttpUrl allows http and https URLs', () => {
@@ -136,4 +139,56 @@ test('isSocialPreviewUserAgent detects common social preview crawlers', () => {
   assert.equal(isSocialPreviewUserAgent('facebookexternalhit/1.1'), true);
   assert.equal(isSocialPreviewUserAgent('Twitterbot/1.0'), true);
   assert.equal(isSocialPreviewUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)'), false);
+});
+
+test('sanitizeSettingValue normalizes theme and media settings', () => {
+  assert.equal(sanitizeSettingValue('background_image_url', '/static/uploads/hero.png'), '/static/uploads/hero.png');
+  assert.equal(sanitizeSettingValue('background_image_url', 'https://cdn.example/hero.png'), 'https://cdn.example/hero.png');
+  assert.equal(sanitizeSettingValue('theme_color', '#ABCDEF'), '#abcdef');
+  assert.equal(sanitizeSettingValue('theme_spacing_scale', '9'), '1.5');
+  assert.equal(sanitizeSettingValue('theme_radius_scale', '0.1'), '0.6');
+});
+
+test('parseThemeTemplateInput validates schema and keeps only supported keys', () => {
+  const parsed = parseThemeTemplateInput({
+    schema: 'linkhub-theme-v1',
+    name: 'My Theme',
+    settings: {
+      background_mode: 'gradient',
+      theme_color: '#AA33BB',
+      theme_spacing_scale: '1.2',
+      unknown_key: 'ignored'
+    }
+  });
+
+  assert.equal(parsed.name, 'My Theme');
+  assert.equal(parsed.settings.background_mode, 'gradient');
+  assert.equal(parsed.settings.theme_color, '#aa33bb');
+  assert.equal(parsed.settings.theme_spacing_scale, '1.2');
+  assert.equal('unknown_key' in parsed.settings, false);
+
+  assert.throws(
+    () =>
+      parseThemeTemplateInput({
+        schema: 'linkhub-theme-v999',
+        settings: { theme_color: '#ff0000' }
+      }),
+    /Unsupported theme schema/
+  );
+});
+
+test('buildThemeTemplatePayload emits v1 schema and sanitized settings payload', () => {
+  const payload = buildThemeTemplatePayload('Demo Export', {
+    theme_color: '#0099FF',
+    background_mode: 'gradient',
+    link_layout: 'grid',
+    bad_key: 'drop-me'
+  });
+
+  assert.equal(payload.schema, 'linkhub-theme-v1');
+  assert.equal(payload.name, 'Demo Export');
+  assert.equal(payload.settings.theme_color, '#0099ff');
+  assert.equal(payload.settings.background_mode, 'gradient');
+  assert.equal(payload.settings.link_layout, 'grid');
+  assert.equal('bad_key' in payload.settings, false);
 });

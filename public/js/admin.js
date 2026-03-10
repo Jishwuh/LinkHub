@@ -106,6 +106,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const csrfToken = $('#csrf-token')?.value || '';
 
+  function applySettingsToForm(form, settings) {
+    if (!form || !settings || typeof settings !== 'object') return;
+    for (const [key, value] of Object.entries(settings)) {
+      const controls = $$(`[name="${key}"]`, form);
+      if (!controls.length) continue;
+
+      const checkboxControls = controls.filter(control => control.type === 'checkbox');
+      const normalized = value == null ? '' : String(value);
+
+      if (checkboxControls.length) {
+        const checked = asBoolean(value);
+        controls.forEach(control => {
+          if (control.type === 'checkbox') control.checked = checked;
+          if (control.type === 'hidden') control.value = checked ? '1' : '0';
+          control.dispatchEvent(new Event('input', { bubbles: true }));
+          control.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        continue;
+      }
+
+      controls.forEach(control => {
+        control.value = normalized;
+        control.dispatchEvent(new Event('input', { bubbles: true }));
+        control.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+    }
+  }
+
   function setupSettingsTabs() {
     const tabs = $$('.settings-tab');
     const panels = $$('.settings-panel');
@@ -130,14 +158,114 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setupThemeColorPreview() {
-    const input = $('#theme-color');
-    const preview = $('#theme-color-preview');
-    if (!input || !preview) return;
+    const bindings = [
+      ['#theme-color', '#theme-color-preview'],
+      ['#theme-surface-color', '#theme-surface-color-preview'],
+      ['#theme-text-color', '#theme-text-color-preview'],
+      ['#theme-muted-color', '#theme-muted-color-preview'],
+      ['#theme-border-color', '#theme-border-color-preview']
+    ];
 
-    const sync = () => applyColorChip(preview, input.value);
-    input.addEventListener('input', sync);
-    input.addEventListener('change', sync);
-    sync();
+    bindings.forEach(([inputSelector, previewSelector]) => {
+      const input = $(inputSelector);
+      const preview = $(previewSelector);
+      if (!input || !preview) return;
+
+      const sync = () => applyColorChip(preview, input.value);
+      input.addEventListener('input', sync);
+      input.addEventListener('change', sync);
+      sync();
+    });
+  }
+
+  function setupThemeTemplates() {
+    const form = $('#settings-form');
+    if (!form) return;
+
+    const presetButtons = $$('[data-theme-preset]');
+    const importBtn = $('#theme-template-import-btn');
+    const exportBtn = $('#theme-template-export-btn');
+    const fileInput = $('#theme-template-file');
+
+    presetButtons.forEach(button => {
+      button.addEventListener('click', async () => {
+        const preset = String(button.dataset.themePreset || '').trim().toLowerCase();
+        if (!preset) return;
+        button.disabled = true;
+        try {
+          const payload = await postUrlEncoded('/admin/theme/preset', { _csrf: csrfToken, preset });
+          applySettingsToForm(form, payload.settings || {});
+          showToast(payload.message || 'Template applied');
+        } catch (error) {
+          showToast(error.message || 'Failed to apply template', 'error');
+        } finally {
+          button.disabled = false;
+        }
+      });
+    });
+
+    importBtn?.addEventListener('click', async () => {
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        showToast('Select a JSON file first', 'error');
+        return;
+      }
+
+      let rawText = '';
+      try {
+        rawText = await file.text();
+        JSON.parse(rawText);
+      } catch {
+        showToast('Template file is not valid JSON', 'error');
+        return;
+      }
+
+      importBtn.disabled = true;
+      importBtn.textContent = 'Importing...';
+      try {
+        const payload = await postUrlEncoded('/admin/theme/import', {
+          _csrf: csrfToken,
+          template_json: rawText
+        });
+        applySettingsToForm(form, payload.settings || {});
+        showToast(payload.message || 'Template imported');
+      } catch (error) {
+        showToast(error.message || 'Failed to import template', 'error');
+      } finally {
+        importBtn.disabled = false;
+        importBtn.textContent = 'Import JSON';
+      }
+    });
+
+    exportBtn?.addEventListener('click', async () => {
+      exportBtn.disabled = true;
+      exportBtn.textContent = 'Exporting...';
+      try {
+        const siteTitle = String($('[name="site_title"]', form)?.value || '').trim() || 'linkhub-theme';
+        const response = await fetch(`/admin/theme/export?name=${encodeURIComponent(siteTitle)}`, {
+          headers: {
+            Accept: 'application/json',
+            'X-Requested-With': 'fetch'
+          }
+        });
+        if (!response.ok) throw new Error(`Export failed (${response.status})`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${siteTitle.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'linkhub-theme'}.json`;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(url);
+        showToast('Template exported');
+      } catch (error) {
+        showToast(error.message || 'Failed to export template', 'error');
+      } finally {
+        exportBtn.disabled = false;
+        exportBtn.textContent = 'Export JSON';
+      }
+    });
   }
 
   function setupBackgroundModeVisibility(form) {
@@ -215,6 +343,12 @@ document.addEventListener('DOMContentLoaded', () => {
       handle: $('[name="handle"]', form),
       displayName: $('[name="display_name"]', form),
       themeColor: $('[name="theme_color"]', form),
+      themeSurfaceColor: $('[name="theme_surface_color"]', form),
+      themeTextColor: $('[name="theme_text_color"]', form),
+      themeMutedColor: $('[name="theme_muted_color"]', form),
+      themeBorderColor: $('[name="theme_border_color"]', form),
+      themeSpacingScale: $('[name="theme_spacing_scale"]', form),
+      themeRadiusScale: $('[name="theme_radius_scale"]', form),
       fontTheme: $('[name="font_theme"]', form),
       linkLayout: $('[name="link_layout"]', form),
       buttonStyle: $('[name="button_style"]', form),
@@ -293,7 +427,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (previewShare) previewShare.textContent = safeValue(fields.shareEmoji, '🔗') || '🔗';
 
       const color = normalizeHex(safeValue(fields.themeColor), '#8ab4ff');
+      const surfaceColor = normalizeHex(safeValue(fields.themeSurfaceColor), '#161a22');
+      const textColor = normalizeHex(safeValue(fields.themeTextColor), '#f5f5f5');
+      const mutedColor = normalizeHex(safeValue(fields.themeMutedColor), '#c9c9c9');
+      const borderColor = normalizeHex(safeValue(fields.themeBorderColor), '#9aa2b2');
       preview.style.setProperty('--preview-accent', color);
+      preview.style.setProperty('--preview-surface', surfaceColor);
+      preview.style.setProperty('--preview-text', textColor);
+      preview.style.setProperty('--preview-muted', mutedColor);
+      preview.style.setProperty('--preview-border', borderColor);
+
+      const spacingScale = Math.max(0.75, Math.min(1.5, Number(safeValue(fields.themeSpacingScale, '1')) || 1));
+      const radiusScale = Math.max(0.6, Math.min(1.8, Number(safeValue(fields.themeRadiusScale, '1')) || 1));
+      preview.style.setProperty('--preview-space-scale', String(spacingScale));
+      preview.style.setProperty('--preview-radius-scale', String(radiusScale));
 
       const overlayOpacity = Number(safeValue(fields.overlayOpacity, '0.55'));
       if (previewOverlay && Number.isFinite(overlayOpacity)) {
@@ -3470,6 +3617,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSummaryButtons();
   setupSettingsTabs();
   setupThemeColorPreview();
+  setupThemeTemplates();
   setupSettingsSave();
   setupLivePreview();
   setupBuilderPreview();

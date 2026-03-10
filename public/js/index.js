@@ -9,11 +9,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const body = document.body;
   const themeColor = (body.dataset.themeColor || '').trim();
+  const themeSurfaceColor = (body.dataset.themeSurfaceColor || '').trim();
+  const themeTextColor = (body.dataset.themeTextColor || '').trim();
+  const themeMutedColor = (body.dataset.themeMutedColor || '').trim();
+  const themeBorderColor = (body.dataset.themeBorderColor || '').trim();
+  const themeSpacingScale = Number(body.dataset.themeSpacingScale);
+  const themeRadiusScale = Number(body.dataset.themeRadiusScale);
   const overlayOpacity = Number(body.dataset.overlayOpacity);
   const backgroundBlur = Number(body.dataset.backgroundBlur);
 
   if (/^#[0-9a-fA-F]{6}$/.test(themeColor)) {
     document.documentElement.style.setProperty('--accent', themeColor.toLowerCase());
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(themeSurfaceColor)) {
+    document.documentElement.style.setProperty('--surface', themeSurfaceColor.toLowerCase());
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(themeTextColor)) {
+    document.documentElement.style.setProperty('--text', themeTextColor.toLowerCase());
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(themeMutedColor)) {
+    document.documentElement.style.setProperty('--muted', themeMutedColor.toLowerCase());
+  }
+  if (/^#[0-9a-fA-F]{6}$/.test(themeBorderColor)) {
+    document.documentElement.style.setProperty('--border-color', themeBorderColor.toLowerCase());
+  }
+  if (Number.isFinite(themeSpacingScale)) {
+    const clamped = Math.max(0.75, Math.min(1.5, themeSpacingScale));
+    document.documentElement.style.setProperty('--space-scale', String(clamped));
+  }
+  if (Number.isFinite(themeRadiusScale)) {
+    const clamped = Math.max(0.6, Math.min(1.8, themeRadiusScale));
+    document.documentElement.style.setProperty('--radius-scale', String(clamped));
   }
 
   if (Number.isFinite(overlayOpacity)) {
