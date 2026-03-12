@@ -1,4 +1,88 @@
-## Now (Highest impact)
+# TODO
+## Next (Biggest product upgrades)
+
+* [ ] **Conversion blocks**
+
+  * [ ] Email capture block
+  * [ ] Contact form block
+  * [ ] Booking block
+  * [ ] Product showcase block
+  * [ ] Countdown / launch block
+  * [ ] Testimonial / social proof block
+
+---
+
+## Soon (Makes the platform powerful)
+
+* [ ] **API + webhooks**
+
+  * [ ] Public REST API
+  * [ ] API authentication system
+  * [ ] Webhook system
+  * [ ] Click event webhook
+  * [ ] Lead / conversion webhook
+  * [ ] Analytics endpoint
+
+---
+
+## Important (Professional features)
+
+* [ ] **Import tools**
+
+  * [ ] Linktree importer
+  * [ ] Beacons importer
+  * [ ] Carrd importer
+  * [ ] CSV import
+  * [ ] JSON import
+
+---
+
+## Growth features
+
+* [ ] **Integrations**
+
+  * [ ] Calendly block
+  * [ ] Stripe payment links
+  * [ ] Shopify product cards
+  * [ ] Discord invite block
+  * [ ] Twitch live status
+  * [ ] YouTube live status
+  * [ ] Spotify latest track block
+
+---
+
+## Later (Nice improvements)
+
+* [ ] **Page versioning**
+
+  * [ ] Snapshot system
+  * [ ] Restore previous version
+  * [ ] Version history UI
+  * [ ] Draft preview mode
+
+* [ ] **Starter templates**
+
+  * [ ] Creator starter template
+  * [ ] Business starter template
+  * [ ] Streamer starter template
+  * [ ] Store template
+  * [ ] Portfolio template
+
+---
+
+## Future ideas
+
+* [ ] AI page generator
+* [ ] AI link optimization suggestions
+* [ ] Auto layout recommendations
+* [ ] Creator monetization tools
+* [ ] Affiliate analytics tools
+* [ ] Built-in storefront
+* [ ] AI theme generator
+
+---
+
+## Completed as of 3/11/26
 
 - [x] **Per-link analytics**
   - [x] Track clicks per link (not just total visits)
@@ -22,10 +106,6 @@
   - [x] Split view: Admin editor + Live preview panel
   - [x] Inline edit (click to edit text, labels, URLs)
 
----
-
-## Next (Makes it feel “pro” fast)
-
 - [x] **Themes + template gallery**
   - [x] Theme system using CSS variables (colors, fonts, spacing, radius)
   - [x] Template gallery in admin with one-click apply
@@ -46,17 +126,9 @@
   - [x] Image compression + basic crop tool (optional)
   - [x] Alt text support
 
----
-
-## Later (Premium differentiators)
-
 - [x] **Scheduling + rules**
   - [x] Schedule blocks/links to show between dates/times
   - [x] Optional targeting rules: device, geo, referrer, query param
-
----
-
-## “Nice to have” extras (quick wins)
 
 - [x] **QR code generator**
   - [x] QR for profile page
@@ -76,10 +148,6 @@
 - [x] **Abuse + safety**
   - [x] Rate limiting on redirects
   - [x] Basic anti-spam / throttling for likes + view counting
-
----
-
-## Quick Fixes
 
 - [x] **Media Library Input**
   - [x] Allow image blocks to be set to an item in the library. Properly implemented to resolve and save the library asset local URL/path, with alt fallback.

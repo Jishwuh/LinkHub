@@ -56,6 +56,11 @@ test('sanitizeEmbedHtml allows only trusted https iframe embeds', () => {
   assert.match(valid, /src="https:\/\/www\.youtube\.com\/embed\/dQw4w9WgXcQ"/i);
   assert.match(valid, /allow="autoplay; fullscreen"/i);
   assert.doesNotMatch(valid, /camera/i);
+
+  const discord = sanitizeEmbedHtml(
+    '<iframe src="https://discord.com/widget?id=1088106627128893612&theme=dark" width="350" height="500"></iframe>'
+  );
+  assert.match(discord, /src="https:\/\/discord\.com\/widget\?id=1088106627128893612&amp;theme=dark"/i);
 });
 
 test('sanitizeEmbedHtml drops scripts and non-allowlisted iframe hosts', () => {
